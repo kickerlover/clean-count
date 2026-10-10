@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -11,18 +11,20 @@ import Animated, {
 import type { HabitStats } from '@/domain/stats';
 
 import { ChevronRightIcon } from './icons';
-import { KINDS_BY_HABIT, type HabitId, type LocalDate } from '@/domain/types';
+import { habitKinds } from '@/domain/habits';
+import type { Habit, LocalDate } from '@/domain/types';
 import { t } from '@/i18n';
+import { habitLabel, kindLabel } from '@/i18n/habits';
 import { formatDayMonth } from '@/i18n/format';
-import { colors, fonts, habitColor, MAX_FONT_SCALE_NUMBERS, MAX_FONT_SCALE_TEXT, radii } from '@/theme';
+import { colors, createStyles, fonts, MAX_FONT_SCALE_NUMBERS, MAX_FONT_SCALE_TEXT, radii } from '@/theme';
 
 interface CardProps {
-  habitId: HabitId;
+  habit: Habit;
   stats: HabitStats;
 }
 
 /** Основной счётчик: календарные дни с даты отказа. Срыв его не обнуляет. */
-export function CounterCard({ habitId, stats, today }: CardProps & { today: LocalDate }) {
+export function CounterCard({ habit, stats, today }: CardProps & { today: LocalDate }) {
   const since = formatDayMonth(stats.quitDate, today);
   const period = t.main.period(stats.period);
   // Число всегда 112 pt (до пяти цифр помещается в ширину карточки). Если цифр четыре и больше
@@ -30,9 +32,9 @@ export function CounterCard({ habitId, stats, today }: CardProps & { today: Loca
   const stacked = useWindowDimensions().fontScale > 1.2 || stats.totalDays >= 1000;
 
   return (
-    <View style={[styles.card, styles.counter, { backgroundColor: habitColor[habitId] }]}>
+    <View style={[styles.card, styles.counter, { backgroundColor: habit.color }]}>
       <Text style={styles.counterLabel} maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
-        {t.habitWithout[habitId]}
+        {habitLabel(habit)}
       </Text>
 
       <View
@@ -68,8 +70,8 @@ export function CounterCard({ habitId, stats, today }: CardProps & { today: Loca
  * Плитка чистых дней: всего и с последнего срыва, а под ними ближайшая цель.
  * Цель считается по чистым дням с последнего срыва, поэтому полоса стоит рядом с этим числом.
  */
-export function StatsCard({ habitId, stats, onGoalPress }: CardProps & { onGoalPress?: () => void }) {
-  const color = habitColor[habitId];
+export function StatsCard({ habit, stats, onGoalPress }: CardProps & { onGoalPress?: () => void }) {
+  const color = habit.color;
 
   const progress = useSharedValue(stats.goalProgress);
   useEffect(() => {
@@ -134,10 +136,10 @@ function StatTile({ value, label, color }: { value: number; label: string; color
 }
 
 /** Карточка срывов. Прижата к низу страницы, чтобы верхним карточкам оставалось больше места. */
-export function RelapsesCard({ habitId, stats }: CardProps) {
-  const kinds = KINDS_BY_HABIT[habitId];
-  // Для алкоголя показываем оба вида всегда, для курения — только встречавшиеся.
-  const chips = habitId === 'alcohol' ? kinds : kinds.filter((k) => (stats.relapsesByKind[k] ?? 0) > 0);
+export function RelapsesCard({ habit, stats }: CardProps) {
+  const kinds = habitKinds(habit);
+  // Для алкоголя показываем оба вида всегда, для остальных — только встречавшиеся; без видов чипов нет.
+  const chips = habit.preset === 'alcohol' ? kinds : kinds.filter((k) => (stats.relapsesByKind[k] ?? 0) > 0);
 
   const scale = useSharedValue(1);
   const previous = useRef(stats.relapseCount);
@@ -152,7 +154,7 @@ export function RelapsesCard({ habitId, stats }: CardProps) {
   const empty = stats.relapseCount === 0;
   const a11y = empty
     ? t.main.noRelapses
-    : `${t.main.relapses}: ${stats.relapseCount}. ${chips.map((k) => t.main.relapseChip(t.kind[k], stats.relapsesByKind[k] ?? 0)).join(', ')}`;
+    : `${t.main.relapses}: ${stats.relapseCount}${chips.length ? `. ${chips.map((k) => t.main.relapseChip(kindLabel(k, habit), stats.relapsesByKind[k] ?? 0)).join(', ')}` : ''}`;
 
   return (
     <View style={styles.relapses} accessible accessibilityLabel={a11y}>
@@ -160,12 +162,12 @@ export function RelapsesCard({ habitId, stats }: CardProps) {
         <Text style={styles.relapsesTitle} maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
           {empty ? t.main.noRelapses : t.main.relapses}
         </Text>
-        {!empty && (
+        {!empty && chips.length > 0 && (
           <View style={styles.chips}>
             {chips.map((k) => (
               <View key={k} style={styles.chip}>
                 <Text style={styles.chipText} maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
-                  {t.main.relapseChip(t.kind[k], stats.relapsesByKind[k] ?? 0)}
+                  {t.main.relapseChip(kindLabel(k, habit), stats.relapsesByKind[k] ?? 0)}
                 </Text>
               </View>
             ))}
@@ -181,7 +183,7 @@ export function RelapsesCard({ habitId, stats }: CardProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   /** Общая форма большой карточки и плитки чистых дней: одинаковые скругление и поля. */
   card: { borderRadius: radii.counter, paddingHorizontal: 24 },
   counter: { paddingTop: 28, paddingBottom: 26, gap: 14 },

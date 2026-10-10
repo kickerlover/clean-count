@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
-import { AccessibilityInfo, Pressable, StyleSheet, Text } from 'react-native';
+import { AccessibilityInfo, Pressable, Text } from 'react-native';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 
 import { t } from '@/i18n';
-import { colors, fonts, HIT, MAX_FONT_SCALE_TEXT } from '@/theme';
+import { colors, createStyles, fonts, HIT, MAX_FONT_SCALE_TEXT } from '@/theme';
 
 export const UNDO_TIMEOUT_MS = 5000;
 
@@ -51,7 +51,7 @@ export function Snackbar({ id, message, onUndo, onHide, bottom }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   bar: {
     position: 'absolute',
     left: 20,

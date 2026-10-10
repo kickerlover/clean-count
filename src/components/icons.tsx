@@ -1,6 +1,7 @@
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
 import type { SmokingKind } from '@/domain/types';
+import { s } from '@/theme';
 
 interface IconProps {
   size?: number;
@@ -8,7 +9,8 @@ interface IconProps {
   strokeWidth?: number;
 }
 
-const base = (size: number) => ({ width: size, height: size, viewBox: '0 0 24 24', fill: 'none' });
+// Размер иконки задаётся для 14 Pro Max и масштабируется вместе с остальным интерфейсом.
+const base = (size: number) => ({ width: s(size), height: s(size), viewBox: '0 0 24 24', fill: 'none' });
 const stroke = (color: string, strokeWidth: number) => ({
   stroke: color,
   strokeWidth,

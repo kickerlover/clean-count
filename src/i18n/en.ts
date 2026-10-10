@@ -1,4 +1,4 @@
-import type { HabitId } from '@/domain/types';
+import type { Habit, PresetId } from '@/domain/types';
 
 import type { Strings } from './ru';
 
@@ -8,13 +8,14 @@ const days = (n: number) => `${n} ${p(n, 'day', 'days')}`;
 const cleanDays = (n: number) => `${n} clean ${p(n, 'day', 'days')}`;
 const COUNTER_SUFFIX = 'since start';
 const counterSince = (since: string) => `since ${since}`;
-const monthTotal = (n: number, habit: HabitId) =>
-  `${habit === 'alcohol' ? 'alcohol' : 'smoking'} ${p(n, 'relapse', 'relapses')} this month`;
+const monthTotal = (n: number, habit: Habit) =>
+  `${habit.preset ? (habit.preset === 'alcohol' ? 'alcohol' : 'smoking') : habit.name} ${p(n, 'relapse', 'relapses')} this month`;
 
-const HABIT_WITHOUT: Record<HabitId, string> = {
+const HABIT_WITHOUT: Record<PresetId, string> = {
   alcohol: 'without alcohol',
   smoking: 'without smoking',
 };
+const withoutHabit = (habit: Habit) => (habit.preset ? HABIT_WITHOUT[habit.preset] : `relapse-free · ${habit.name}`);
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -40,6 +41,42 @@ export const en: Strings = {
   },
   habitWithoutGenitive: HABIT_WITHOUT,
 
+  units: {
+    times: 'Times',
+    pieces: 'Pieces',
+    servings: 'Servings',
+    minutes: 'Minutes',
+    money: 'Money',
+  },
+
+  habits: {
+    custom: 'Custom habit',
+    add: 'Add a custom habit',
+    limit: (n: number) => `You can track up to ${n} habits`,
+    newTitle: 'New habit',
+    editTitle: 'Edit habit',
+    name: 'Name',
+    namePlaceholder: 'For example, coffee',
+    emoji: 'Icon',
+    emojiPlaceholder: '☕️',
+    emojiHint: 'Any emoji from the keyboard',
+    color: 'Colour',
+    unit: 'What to count on a relapse',
+    kinds: 'Relapse types',
+    kindsPlaceholder: 'For example: coffee, energy drink',
+    kindsHint: 'Comma-separated, optional',
+    create: 'Add',
+    save: 'Save',
+    cancel: 'Cancel',
+    edit: 'Edit',
+    delete: 'Delete habit',
+    deleteTitle: 'Delete this habit?',
+    deleteText: 'All its relapses and achievements will be deleted.',
+    errorName: 'Enter a name',
+    errorEmoji: 'Pick an emoji',
+    cardText: (name: string) => `Count relapse-free days: ${name}`,
+  },
+
   kind: {
     strong: 'Spirits',
     light: 'Light drinks',
@@ -57,7 +94,7 @@ export const en: Strings = {
 
   onboarding: {
     welcomeTitle: 'Clean Count',
-    welcomeText: 'Count your days without alcohol and smoking. A relapse does not erase your progress.',
+    welcomeText: 'Count your days without alcohol, smoking or any other habit. A relapse does not erase your progress.',
     welcomePoints: [
       'Total count and clean days since the last relapse',
       'Relapse calendar',
@@ -65,7 +102,7 @@ export const en: Strings = {
     ],
     start: 'Start',
     habitsTitle: 'What are you quitting?',
-    habitsText: 'Pick one or both. You can change this later in settings.',
+    habitsText: 'Pick the built-in ones or add your own. You can change this later in settings.',
     habitCardText: {
       alcohol: 'Count days without alcohol',
       smoking: 'Count days without cigarettes, vapes and hookah',
@@ -126,7 +163,16 @@ export const en: Strings = {
     phraseNoDays: 'The count starts over. What matters is that you keep going.',
     alcoholKind: 'What was it',
     smokingKind: 'What did you smoke',
+    kindTitle: 'What was it',
     count: 'How many times',
+    countLabel: {
+      times: 'How many times',
+      pieces: 'How many pieces',
+      servings: 'How many servings',
+      minutes: 'How many minutes',
+      money: 'How much money',
+    },
+    amountPlaceholder: 'Amount',
     countLess: 'Fewer',
     countMore: 'More',
     when: 'When',
@@ -160,23 +206,21 @@ export const en: Strings = {
     addRelapse: 'Add relapse',
     chooseHabit: 'Which relapse to log?',
     relapseLabel: (habit: string, kind: string, count: number) =>
-      `${habit} · ${kind.toLowerCase()}${count > 1 ? ` ×${count}` : ''}`,
+      `${habit}${kind ? ` · ${kind.toLowerCase()}` : ''}${count > 1 ? ` ×${count}` : ''}`,
     deleteHint: 'Hold to delete',
     deleteTitle: 'Delete this entry?',
     deleteText: 'The numbers will be recalculated.',
     delete: 'Delete entry',
     cancel: 'Cancel',
     monthTotal,
-    monthTotalA11y: (n: number, habit: HabitId) => `${n} ${monthTotal(n, habit)}`,
+    monthTotalA11y: (n: number, habit: Habit) => `${n} ${monthTotal(n, habit)}`,
     dayA11y: (label: string, state: string) => `${label}${state ? `, ${state}` : ''}`,
     stateA11y: {
       clean: 'clean day',
-      alcohol: 'alcohol relapse',
-      smoking: 'smoking relapse',
-      both: 'alcohol and smoking relapses',
       inactive: 'unavailable',
       today: 'today',
     },
+    relapseA11y: (names: string) => `relapse: ${names}`,
   },
 
   achievements: {
@@ -184,7 +228,7 @@ export const en: Strings = {
     count: (n: number) => `${n} ${p(n, 'achievement', 'achievements')}`,
     none: 'No achievements yet',
     inStreak: (n: number) => `Current streak — ${n} ${p(n, 'milestone', 'milestones')}`,
-    last: (n: number, habit: HabitId) => `Latest — ${days(n)} ${HABIT_WITHOUT[habit]}`,
+    last: (n: number, habit: Habit) => `Latest — ${days(n)} ${withoutHabit(habit)}`,
     next: (goal: number, remaining: number) => `Next goal — ${days(goal)}, ${days(remaining)} to go`,
     tiers: 'Key milestones',
     all: 'All milestones',
@@ -210,7 +254,7 @@ export const en: Strings = {
 
   milestone: {
     title: 'New milestone!',
-    days: (n: number, habit: HabitId) => `${p(n, 'day', 'days')} ${HABIT_WITHOUT[habit]}`,
+    days: (n: number, habit: Habit) => `${p(n, 'day', 'days')} ${withoutHabit(habit)}`,
     text: (n: number) =>
       n >= 365
         ? 'A whole year and more. That is enormous work — be proud of yourself.'

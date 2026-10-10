@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { Pressable, View, type LayoutChangeEvent } from 'react-native';
 import Animated, { interpolateColor, useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 
-import { colors, fonts, MAX_FONT_SCALE_TEXT } from '@/theme';
+import { colors, createStyles, fonts, MAX_FONT_SCALE_TEXT, s } from '@/theme';
 
 const PADDING = 4;
 const GAP = 4;
@@ -25,11 +25,13 @@ interface Props {
 export function SegmentedControl({ segments, position, selectedIndex, onSelect, fontSize = 15, accessibilityLabel }: Props) {
   const [width, setWidth] = useState(0);
   const count = segments.length;
-  const segmentWidth = width > 0 ? (width - PADDING * 2 - GAP * (count - 1)) / count : 0;
+  // Масштаб считаем здесь: внутри ворклета (UI-поток) функции из других модулей недоступны.
+  const gap = s(GAP);
+  const segmentWidth = width > 0 ? (width - s(PADDING) * 2 - gap * (count - 1)) / count : 0;
 
   const indicatorStyle = useAnimatedStyle(() => ({
     width: segmentWidth,
-    transform: [{ translateX: position.get() * (segmentWidth + GAP) }],
+    transform: [{ translateX: position.get() * (segmentWidth + gap) }],
   }));
 
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
@@ -69,7 +71,7 @@ function SegmentLabel({ label, index, position, fontSize }: { label: string; ind
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   track: {
     flexDirection: 'row',
     minHeight: 48,

@@ -1,13 +1,12 @@
 import { addDays, localDateAt, toZoned, zonedDate } from './localDate';
 import {
-  RELAPSE_COUNT_MAX,
+  RELAPSE_AMOUNT_MAX,
   RELAPSE_COUNT_MIN,
   RELAPSE_NOTE_MAX_LENGTH,
   type Habit,
   type HabitId,
   type LocalDate,
   type Relapse,
-  type RelapseKind,
 } from './types';
 
 export interface RelapseDateRange {
@@ -35,20 +34,21 @@ export function yesterday(now: Date, tz: string): LocalDate {
 export interface RelapseInput {
   habitId: HabitId;
   date: LocalDate;
-  kind: RelapseKind;
+  /** Ключ вида у встроенных, название у своих, null — без вида. */
+  kind: string | null;
   count?: number;
   note?: string | null;
 }
 
 export function buildRelapse(input: RelapseInput, id: string, now: Date, tz: string): Relapse {
-  const count = Math.min(RELAPSE_COUNT_MAX, Math.max(RELAPSE_COUNT_MIN, Math.round(input.count ?? 1)));
+  const count = Math.min(RELAPSE_AMOUNT_MAX, Math.max(RELAPSE_COUNT_MIN, Math.round(input.count ?? 1)));
   const note = input.note?.trim().slice(0, RELAPSE_NOTE_MAX_LENGTH) || null;
   return {
     id,
     habitId: input.habitId,
     date: input.date,
     createdAt: toZoned(now, tz),
-    kind: input.kind,
+    kind: input.kind?.trim() || null,
     count,
     note,
   };

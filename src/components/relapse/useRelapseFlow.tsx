@@ -40,7 +40,7 @@ export function useRelapseFlow(snackbarBottom: number) {
   const elements = (
     <>
       <RelapseSheet
-        habit={target ? habits[target.habitId] : null}
+        habit={target ? (habits.find((h) => h.id === target.habitId) ?? null) : null}
         visible={visible}
         presetDate={target?.presetDate}
         onClose={close}

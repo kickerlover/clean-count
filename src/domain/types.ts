@@ -1,14 +1,34 @@
-export type HabitId = 'alcohol' | 'smoking';
-export const HABIT_IDS: readonly HabitId[] = ['alcohol', 'smoking'];
+/** Встроенные привычки с готовыми видами срыва, иконками и текстами. */
+export type PresetId = 'alcohol' | 'smoking';
+export const PRESET_IDS: readonly PresetId[] = ['alcohol', 'smoking'];
+
+/** Идентификатор привычки: у встроенных совпадает с `PresetId`, у своих — UUID. */
+export type HabitId = string;
 
 export type AlcoholKind = 'strong' | 'light';
 export type SmokingKind = 'cigarette' | 'hookah' | 'vape' | 'heated' | 'cigar' | 'other';
-export type RelapseKind = AlcoholKind | SmokingKind;
+export type PresetKind = AlcoholKind | SmokingKind;
 
-export const KINDS_BY_HABIT: { alcohol: readonly AlcoholKind[]; smoking: readonly SmokingKind[] } = {
+export const KINDS_BY_PRESET: { alcohol: readonly AlcoholKind[]; smoking: readonly SmokingKind[] } = {
   alcohol: ['strong', 'light'],
   smoking: ['cigarette', 'hookah', 'vape', 'heated', 'cigar', 'other'],
 };
+
+/** Цвета встроенных привычек из макетов «Энергия». */
+export const PRESET_COLORS: Record<PresetId, string> = {
+  alcohol: '#2B3AE0',
+  smoking: '#0F766E',
+};
+
+/** В чём считать количество при срыве. */
+export type HabitUnit = 'times' | 'pieces' | 'servings' | 'minutes' | 'money';
+export const HABIT_UNITS: readonly HabitUnit[] = ['times', 'pieces', 'servings', 'minutes', 'money'];
+
+/** Сколько привычек можно вести одновременно: больше не помещается в переключатель. */
+export const MAX_HABITS = 6;
+export const HABIT_NAME_MAX_LENGTH = 24;
+export const HABIT_KINDS_MAX = 8;
+export const HABIT_KIND_MAX_LENGTH = 20;
 
 /** Календарная дата без часового пояса: "YYYY-MM-DD". */
 export type LocalDate = string;
@@ -18,6 +38,19 @@ export type ZonedDateTime = string;
 
 export interface Habit {
   id: HabitId;
+  /** Встроенная привычка или null для своей. */
+  preset: PresetId | null;
+  /** Название своей привычки; у встроенных пусто, название берётся из словаря. */
+  name: string;
+  /** Эмодзи своей привычки; у встроенных null — рисуется иконка. */
+  emoji: string | null;
+  /** Цвет карточек и календаря, HEX. */
+  color: string;
+  unit: HabitUnit;
+  /** Виды срыва своей привычки (названия); у встроенных пусто — виды из `KINDS_BY_PRESET`. */
+  kinds: string[];
+  /** Порядок на главном экране. */
+  order: number;
   enabled: boolean;
   /** null — привычка ещё ни разу не настраивалась. */
   quitAt: ZonedDateTime | null;
@@ -29,9 +62,16 @@ export interface Habit {
   celebratedUpTo: number;
 }
 
-/** Привычка, которую ещё не настраивали. */
-export const emptyHabit = (id: HabitId): Habit => ({
+/** Встроенная привычка, которую ещё не настраивали. */
+export const emptyHabit = (id: PresetId): Habit => ({
   id,
+  preset: id,
+  name: '',
+  emoji: null,
+  color: PRESET_COLORS[id],
+  unit: id === 'smoking' ? 'pieces' : 'times',
+  kinds: [],
+  order: PRESET_IDS.indexOf(id),
   enabled: false,
   quitAt: null,
   milestonesEarned: [],
@@ -45,7 +85,8 @@ export interface Relapse {
   /** День срыва в локальном поясе на момент записи. */
   date: LocalDate;
   createdAt: ZonedDateTime;
-  kind: RelapseKind;
+  /** Вид: ключ из `PresetKind` у встроенных, название у своих, null — без вида. */
+  kind: string | null;
   count: number;
   note: string | null;
 }
@@ -63,4 +104,7 @@ export interface Settings {
 
 export const RELAPSE_NOTE_MAX_LENGTH = 300;
 export const RELAPSE_COUNT_MIN = 1;
+/** Предел для шагового счётчика (штуки, порции, минуты, разы). */
 export const RELAPSE_COUNT_MAX = 99;
+/** Предел для суммы денег. */
+export const RELAPSE_AMOUNT_MAX = 999_999;

@@ -4,7 +4,7 @@ import type { Habit, HabitId, LocalDate, Relapse } from './types';
 
 export type CalendarFilter = 'all' | HabitId;
 
-export type DayState = 'inactive' | 'clean' | 'alcohol' | 'smoking' | 'both';
+export type DayState = 'inactive' | 'clean' | 'relapse';
 
 export interface YearMonth {
   year: number;
@@ -17,6 +17,8 @@ export interface DayCell {
   day: number;
   state: DayState;
   isToday: boolean;
+  /** Привычки со срывом в этот день (с учётом фильтра), в порядке привычек. */
+  habitIds: HabitId[];
   /** Срывы этого дня с учётом фильтра, в порядке записи. */
   relapses: Relapse[];
 }
@@ -85,12 +87,13 @@ export function buildMonth(
   const firstActive = earliestQuitDate(habits, filter);
 
   const byDate = new Map<LocalDate, Relapse[]>();
-  const totals: Record<HabitId, number> = { alcohol: 0, smoking: 0 };
+  const totals: Record<HabitId, number> = {};
   for (const habit of active) {
+    totals[habit.id] = 0;
     const shown = visible.includes(habit);
     for (const r of countedRelapses(habit, relapses)) {
       if (!r.date.startsWith(prefix)) continue;
-      totals[habit.id] += 1;
+      totals[habit.id]! += 1;
       if (!shown) continue;
       const list = byDate.get(r.date) ?? [];
       list.push(r);
@@ -104,13 +107,9 @@ export function buildMonth(
     const date = fromParts({ year: ym.year, month: ym.month, day });
     const dayRelapses = (byDate.get(date) ?? []).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     const inRange = !!firstActive && date >= firstActive && date <= today;
-    let state: DayState = 'inactive';
-    if (inRange) {
-      const hasAlcohol = dayRelapses.some((r) => r.habitId === 'alcohol');
-      const hasSmoking = dayRelapses.some((r) => r.habitId === 'smoking');
-      state = hasAlcohol && hasSmoking ? 'both' : hasAlcohol ? 'alcohol' : hasSmoking ? 'smoking' : 'clean';
-    }
-    days.push({ date, day, state, isToday: date === today, relapses: inRange ? dayRelapses : [] });
+    const habitIds = inRange ? visible.filter((h) => dayRelapses.some((r) => r.habitId === h.id)).map((h) => h.id) : [];
+    const state: DayState = !inRange ? 'inactive' : habitIds.length ? 'relapse' : 'clean';
+    days.push({ date, day, state, isToday: date === today, habitIds, relapses: inRange ? dayRelapses : [] });
   }
 
   return {

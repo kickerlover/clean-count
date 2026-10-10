@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, Text, type StyleProp, type ViewStyle } from 'react-native';
 
-import { colors, fonts, HIT, MAX_FONT_SCALE_TEXT } from '@/theme';
+import { colors, createStyles, fonts, HIT, MAX_FONT_SCALE_TEXT, s } from '@/theme';
 
 interface PillButtonProps {
   label: string;
@@ -51,6 +51,8 @@ interface IconButtonProps {
 
 /** Круглая кнопка с иконкой; подпись обязательна — её читают VoiceOver и TalkBack. */
 export function IconButton({ label, onPress, children, variant = 'filled', size = 48, disabled }: IconButtonProps) {
+  const px = s(size);
+  const hit = s(HIT);
   return (
     <Pressable
       onPress={onPress}
@@ -58,10 +60,10 @@ export function IconButton({ label, onPress, children, variant = 'filled', size 
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: !!disabled }}
-      hitSlop={size < HIT ? (HIT - size) / 2 : undefined}
+      hitSlop={px < hit ? (hit - px) / 2 : undefined}
       style={({ pressed }) => [
         styles.icon,
-        { width: size, height: size, borderRadius: size / 2 },
+        { width: px, height: px, borderRadius: px / 2 },
         variant === 'filled' && styles.iconFilled,
         pressed && styles.iconPressed,
         disabled && styles.disabled,
@@ -72,7 +74,7 @@ export function IconButton({ label, onPress, children, variant = 'filled', size 
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   primary: {
     minHeight: 60,
     borderRadius: 30,

@@ -44,6 +44,20 @@
 
 Первая версия.
 
+## Что нового в версии 1.1
+
+Русский:
+
+```
+Теперь можно считать дни без любой вредной привычки. В настройках или при первом запуске добавьте свою: название, эмодзи, цвет и что считать при срыве — разы, штуки, порции, минуты или деньги. Виды срыва задаёте сами. Всего до шести привычек. Заметка к срыву появилась у всех привычек, не только у алкоголя.
+```
+
+English:
+
+```
+Count days without any bad habit. Add your own in Settings or during setup: a name, an emoji, a colour and what to count on a relapse — times, pieces, servings, minutes or money. Relapse kinds are up to you. Up to six habits in total. Relapse notes are now available for every habit, not just alcohol.
+```
+
 ## Адреса
 
 - Поддержка: https://github.com/kickerlover/clean-count

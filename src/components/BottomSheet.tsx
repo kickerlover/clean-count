@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { t } from '@/i18n';
-import { colors, radii } from '@/theme';
+import { colors, createStyles, radii, s } from '@/theme';
 
 const OPEN_MS = 280;
 const CLOSE_MS = 220;
@@ -81,7 +81,7 @@ export function BottomSheet({ visible, onRequestClose, children, accessibilityLa
         </Animated.View>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.avoider} pointerEvents="box-none">
           <Animated.View
-            style={[styles.sheet, { maxHeight: height - insets.top - 12 }, sheetStyle]}
+            style={[styles.sheet, { maxHeight: height - insets.top - s(12) }, sheetStyle]}
             accessibilityViewIsModal
             accessibilityLabel={accessibilityLabel}
           >
@@ -94,7 +94,7 @@ export function BottomSheet({ visible, onRequestClose, children, accessibilityLa
               bounces={false}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}
+              contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, s(16)) + s(12) }]}
             >
               {children}
             </ScrollView>
@@ -105,7 +105,7 @@ export function BottomSheet({ visible, onRequestClose, children, accessibilityLa
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   root: { flex: 1 },
   scrim: { backgroundColor: colors.scrim },
   avoider: { flex: 1, justifyContent: 'flex-end' },

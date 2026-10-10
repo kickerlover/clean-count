@@ -1,26 +1,27 @@
 import * as Haptics from 'expo-haptics';
 import { useMemo, useState, type ReactNode } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, Text, TextInput, View } from 'react-native';
 
+import { habitCountsAmount, habitKinds } from '@/domain/habits';
 import { addDays } from '@/domain/localDate';
 import { relapseDateRange } from '@/domain/relapse';
 import { computeHabitStats } from '@/domain/stats';
 import {
-  KINDS_BY_HABIT,
+  RELAPSE_AMOUNT_MAX,
   RELAPSE_COUNT_MAX,
   RELAPSE_COUNT_MIN,
   RELAPSE_NOTE_MAX_LENGTH,
   type Habit,
   type LocalDate,
   type Relapse,
-  type RelapseKind,
   type SmokingKind,
 } from '@/domain/types';
 import { readNow } from '@/hooks/clock';
 import { t } from '@/i18n';
 import { formatShortDate } from '@/i18n/format';
+import { kindLabel } from '@/i18n/habits';
 import { useAppStore } from '@/store/appStore';
-import { colors, fonts, habitColor, HIT, MAX_FONT_SCALE_TEXT, radii } from '@/theme';
+import { colors, createStyles, fonts, HIT, MAX_FONT_SCALE_TEXT, radii } from '@/theme';
 
 import { BottomSheet } from '../BottomSheet';
 import { PillButton } from '../buttons';
@@ -57,7 +58,11 @@ export function RelapseSheet({ habit, visible, presetDate, onClose, onSaved }: P
 function RelapseForm({ habit, presetDate, onClose, onSaved }: Omit<Props, 'visible' | 'habit'> & { habit: Habit }) {
   const relapses = useAppStore((s) => s.relapses);
   const addRelapse = useAppStore((s) => s.addRelapse);
-  const color = habitColor[habit.id];
+  const color = habit.color;
+  const kinds = habitKinds(habit);
+  const hasKinds = kinds.length > 0;
+  const countsAmount = habitCountsAmount(habit);
+  const isMoney = countsAmount && habit.unit === 'money';
 
   // Значения фиксируются на момент открытия окна.
   const opened = useMemo(() => readNow(), []);
@@ -70,8 +75,9 @@ function RelapseForm({ habit, presetDate, onClose, onSaved }: Omit<Props, 'visib
   const [choice, setChoice] = useState<DateChoice>(initialChoice);
   const [otherDate, setOtherDate] = useState<LocalDate | null>(initialChoice === 'other' ? presetDate! : null);
   const [showInlinePicker, setShowInlinePicker] = useState(false);
-  const [kind, setKind] = useState<RelapseKind | null>(null);
+  const [kind, setKind] = useState<string | null>(null);
   const [count, setCount] = useState(1);
+  const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -106,13 +112,23 @@ function RelapseForm({ habit, presetDate, onClose, onSaved }: Omit<Props, 'visib
     }
   };
 
+  const parsedAmount = Math.round(Number(amount.replace(',', '.')));
+  const amountValid = !isMoney || (Number.isFinite(parsedAmount) && parsedAmount >= RELAPSE_COUNT_MIN && parsedAmount <= RELAPSE_AMOUNT_MAX);
+  const canSave = (!hasKinds || !!kind) && !!date && amountValid && !saving;
+
   const save = async () => {
-    if (!kind || !date || saving) return;
+    if (!canSave || !date) return;
     setSaving(true);
     try {
       const { now, tz } = readNow();
       const relapse = await addRelapse(
-        { habitId: habit.id, date, kind, count: habit.id === 'smoking' ? count : 1, note: habit.id === 'alcohol' ? note : null },
+        {
+          habitId: habit.id,
+          date,
+          kind: hasKinds ? kind : null,
+          count: !countsAmount ? 1 : isMoney ? parsedAmount : count,
+          note,
+        },
         now,
         tz,
       );
@@ -137,10 +153,10 @@ function RelapseForm({ habit, presetDate, onClose, onSaved }: Omit<Props, 'visib
         </Text>
       </View>
 
-      {habit.id === 'alcohol' ? (
+      {habit.preset === 'alcohol' ? (
         <Section title={t.sheet.alcoholKind}>
           <View style={styles.alcoholGrid}>
-            {KINDS_BY_HABIT.alcohol.map((k) => {
+            {(kinds as readonly ('strong' | 'light')[]).map((k) => {
               const on = kind === k;
               return (
                 <Pressable
@@ -164,39 +180,59 @@ function RelapseForm({ habit, presetDate, onClose, onSaved }: Omit<Props, 'visib
         </Section>
       ) : (
         <>
-          <Section title={t.sheet.smokingKind}>
-            <View style={styles.smokingGrid}>
-              {KINDS_BY_HABIT.smoking.map((k: SmokingKind) => {
-                const on = kind === k;
-                return (
-                  <Pressable
-                    key={k}
-                    onPress={() => setKind(k)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: on }}
-                    accessibilityLabel={t.kind[k]}
-                    style={[styles.smokingTile, on ? { backgroundColor: color, borderColor: color } : styles.cardIdle]}
-                  >
-                    <SmokingKindIcon kind={k} color={on ? colors.onAccent : colors.textPrimary} />
-                    <Text
-                      style={[styles.smokingLabel, on && styles.onAccent]}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      maxFontSizeMultiplier={1.4}
+          {hasKinds && (
+            <Section title={habit.preset === 'smoking' ? t.sheet.smokingKind : t.sheet.kindTitle}>
+              <View style={styles.smokingGrid}>
+                {kinds.map((k) => {
+                  const on = kind === k;
+                  const label = kindLabel(k, habit);
+                  return (
+                    <Pressable
+                      key={k}
+                      onPress={() => setKind(k)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={label}
+                      style={[styles.smokingTile, on ? { backgroundColor: color, borderColor: color } : styles.cardIdle]}
                     >
-                      {t.kind[k]}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </Section>
+                      {habit.preset === 'smoking' && <SmokingKindIcon kind={k as SmokingKind} color={on ? colors.onAccent : colors.textPrimary} />}
+                      <Text
+                        style={[styles.smokingLabel, on && styles.onAccent]}
+                        numberOfLines={2}
+                        adjustsFontSizeToFit
+                        maxFontSizeMultiplier={1.4}
+                      >
+                        {label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </Section>
+          )}
 
+          {isMoney ? (
+            <View style={styles.counter}>
+              <Text style={styles.counterLabel} maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
+                {t.sheet.countLabel.money}
+              </Text>
+              <TextInput
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="number-pad"
+                placeholder={t.sheet.amountPlaceholder}
+                placeholderTextColor={colors.mutedText}
+                style={styles.amount}
+                accessibilityLabel={t.sheet.countLabel.money}
+                maxFontSizeMultiplier={1.3}
+              />
+            </View>
+          ) : countsAmount && (
           <View style={styles.counter}>
             <Text style={styles.counterLabel} maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
-              {t.sheet.count}
+              {t.sheet.countLabel[habit.unit]}
             </Text>
-            <View style={styles.stepper} accessible accessibilityRole="adjustable" accessibilityLabel={t.sheet.count}
+            <View style={styles.stepper} accessible accessibilityRole="adjustable" accessibilityLabel={t.sheet.countLabel[habit.unit]}
               accessibilityValue={{ min: RELAPSE_COUNT_MIN, max: RELAPSE_COUNT_MAX, now: count }}
               accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
               onAccessibilityAction={(e) =>
@@ -210,6 +246,7 @@ function RelapseForm({ habit, presetDate, onClose, onSaved }: Omit<Props, 'visib
               <StepButton label={t.sheet.countMore} symbol="+" disabled={count >= RELAPSE_COUNT_MAX} onPress={() => setCount((c) => Math.min(RELAPSE_COUNT_MAX, c + 1))} />
             </View>
           </View>
+          )}
         </>
       )}
 
@@ -239,8 +276,7 @@ function RelapseForm({ habit, presetDate, onClose, onSaved }: Omit<Props, 'visib
         )}
       </Section>
 
-      {habit.id === 'alcohol' && (
-        <View style={styles.section}>
+      <View style={styles.section}>
           <Text style={styles.sectionTitle} maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
             {t.sheet.note} <Text style={styles.optional}>{t.sheet.noteOptional}</Text>
           </Text>
@@ -258,11 +294,10 @@ function RelapseForm({ habit, presetDate, onClose, onSaved }: Omit<Props, 'visib
           {note.length > RELAPSE_NOTE_MAX_LENGTH - 50 && (
             <Text style={styles.noteCounter}>{t.sheet.noteCounter(note.length, RELAPSE_NOTE_MAX_LENGTH)}</Text>
           )}
-        </View>
-      )}
+      </View>
 
       <View style={styles.actions}>
-        <PillButton label={t.sheet.save} onPress={save} disabled={!kind || !date || saving} />
+        <PillButton label={t.sheet.save} onPress={save} disabled={!canSave} />
         <PillButton label={t.sheet.cancel} variant="text" onPress={onClose} />
       </View>
     </>
@@ -312,7 +347,7 @@ function StepButton({ label, symbol, disabled, onPress }: { label: string; symbo
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   header: { gap: 8 },
   title: { fontFamily: fonts.display700, fontSize: 22, color: colors.textPrimary },
   phrase: { fontFamily: fonts.text400, fontSize: 15, lineHeight: 22, color: colors.textSecondary },
@@ -359,6 +394,17 @@ const styles = StyleSheet.create({
   stepPressed: { opacity: 0.7 },
   stepText: { fontSize: 22, color: colors.textPrimary, fontFamily: fonts.text500 },
   counterValue: { minWidth: 44, textAlign: 'center', fontFamily: fonts.display700, fontSize: 20, color: colors.textPrimary },
+  amount: {
+    minWidth: 120,
+    height: HIT,
+    borderRadius: HIT / 2,
+    backgroundColor: colors.subtle,
+    paddingHorizontal: 16,
+    textAlign: 'right',
+    fontFamily: fonts.display700,
+    fontSize: 18,
+    color: colors.textPrimary,
+  },
 
   dateChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   dateChip: {

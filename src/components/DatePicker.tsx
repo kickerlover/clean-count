@@ -1,13 +1,13 @@
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { useState } from 'react';
-import { Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Platform, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { create } from 'zustand';
 
 import { fromParts, toParts } from '@/domain/localDate';
 import type { LocalDate } from '@/domain/types';
 import { t } from '@/i18n';
-import { colors, radii } from '@/theme';
+import { colors, createStyles, radii, s } from '@/theme';
 
 import { PillButton } from './buttons';
 
@@ -97,7 +97,7 @@ export function PickerHost() {
     <Modal visible={!!pending} transparent animationType="fade" onRequestClose={() => close(null)}>
       <Pressable style={styles.scrim} onPress={() => close(null)} accessibilityLabel={t.sheet.cancel} accessibilityRole="button" />
       {props && (
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + s(16) }]}>
           <DateTimePicker
             {...props}
             value={draft ?? props.value}
@@ -139,7 +139,7 @@ export function InlineDatePicker({ value, min, max, onChange }: InlineDatePicker
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   scrim: { flex: 1, backgroundColor: colors.scrim },
   sheet: {
     backgroundColor: colors.background,

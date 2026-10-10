@@ -1,3 +1,5 @@
+import { emptyHabit } from '@/domain/types';
+
 import { en } from '../en';
 import { getLanguage, setLanguage, systemLanguage, t } from '../index';
 import { ru } from '../ru';
@@ -33,7 +35,7 @@ describe('языки интерфейса', () => {
     expect(t.main.period({ years: 1, months: 0, days: 1 })).toBe('1 year 1 day');
     expect(t.main.sinceRelapseLabel(1, false)).toBe('clean day with no relapses');
     expect(t.achievements.tierName(730)).toBe('2 years');
-    expect(t.calendar.monthTotalA11y(1, 'alcohol')).toBe('1 alcohol relapse this month');
+    expect(t.calendar.monthTotalA11y(1, emptyHabit('alcohol'))).toBe('1 alcohol relapse this month');
     expect(t.sheet.phrases[0]!(1)).toBe(
       "The count since the last relapse starts over, but 1 clean day is yours and isn't going anywhere.",
     );

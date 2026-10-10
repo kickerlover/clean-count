@@ -1,22 +1,15 @@
 import { localDateAt, toZoned } from '../localDate';
 import { computeHabitStats, daysSinceLastRelapse } from '../stats';
-import type { Habit, Relapse, RelapseKind } from '../types';
+import { emptyHabit, type Habit, type PresetId, type Relapse } from '../types';
 
 const MSK = 'Europe/Moscow';
 /** Календарная дата момента в поясе — то, что экраны получают из часов. */
 const at = (iso: string, tz = MSK) => localDateAt(new Date(iso), tz);
 
-const habit = (quitAt: string, id: Habit['id'] = 'alcohol'): Habit => ({
-  id,
-  enabled: true,
-  quitAt,
-  milestonesEarned: [],
-  celebratedSince: null,
-  celebratedUpTo: 0,
-});
+const habit = (quitAt: string, id: PresetId = 'alcohol'): Habit => ({ ...emptyHabit(id), enabled: true, quitAt });
 
 let seq = 0;
-const relapse = (date: string, createdAt: string, kind: RelapseKind = 'light', habitId: Habit['id'] = 'alcohol'): Relapse => ({
+const relapse = (date: string, createdAt: string, kind: string | null = 'light', habitId: Habit['id'] = 'alcohol'): Relapse => ({
   id: `r${++seq}`,
   habitId,
   date,

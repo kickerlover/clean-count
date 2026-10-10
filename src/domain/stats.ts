@@ -1,6 +1,6 @@
 import { addDays, calendarDiff, type CalendarPeriod, diffDays, zonedDate } from './localDate';
 import { goalProgress } from './milestones';
-import type { Habit, LocalDate, Relapse, RelapseKind, ZonedDateTime } from './types';
+import type { Habit, LocalDate, Relapse, ZonedDateTime } from './types';
 
 export interface HabitStats {
   quitDate: LocalDate;
@@ -15,7 +15,8 @@ export interface HabitStats {
   /** Завершённые чистые дни после дня последнего срыва; без срывов равно общему счёту. */
   daysSinceRelapse: number;
   relapseCount: number;
-  relapsesByKind: Partial<Record<RelapseKind, number>>;
+  /** Число записей по видам; срывы без вида под ключом ''. */
+  relapsesByKind: Record<string, number>;
   /** Следующая цель считается по чистым дням с последнего срыва и после срыва начинается заново с 5 дней. */
   goal: number;
   goalRemaining: number;
@@ -68,8 +69,8 @@ export function computeHabitStats(habit: Habit, relapses: readonly Relapse[], to
   const streakStart = streakStartDate(habit, relapses);
   const daysSinceRelapse = Math.max(0, diffDays(today, streakStart));
 
-  const relapsesByKind: Partial<Record<RelapseKind, number>> = {};
-  for (const r of counted) relapsesByKind[r.kind] = (relapsesByKind[r.kind] ?? 0) + 1;
+  const relapsesByKind: Record<string, number> = {};
+  for (const r of counted) relapsesByKind[r.kind ?? ''] = (relapsesByKind[r.kind ?? ''] ?? 0) + 1;
 
   const goal = goalProgress(daysSinceRelapse);
 

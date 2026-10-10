@@ -1,16 +1,16 @@
 import { Redirect, router } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import { useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconButton, PillButton } from '@/components/buttons';
 import { CounterCard, RelapsesCard, StatsCard } from '@/components/HabitCards';
+import { HabitTabs } from '@/components/HabitTabs';
 import { CalendarIcon, SettingsIcon, TrophyIcon } from '@/components/icons';
 import { MilestoneOverlay } from '@/components/MilestoneOverlay';
 import { useRelapseFlow } from '@/components/relapse/useRelapseFlow';
-import { SegmentedControl } from '@/components/SegmentedControl';
 import { pendingMilestone } from '@/domain/milestones';
 import { computeHabitStats } from '@/domain/stats';
 import type { Habit } from '@/domain/types';
@@ -18,10 +18,11 @@ import { useClock } from '@/hooks/clock';
 import { useEnabledHabits } from '@/hooks/useEnabledHabits';
 import { useLanguage } from '@/hooks/useLanguage';
 import { t } from '@/i18n';
+import { habitName } from '@/i18n/habits';
 import { useAppStore } from '@/store/appStore';
-import { colors, fonts, MAX_FONT_SCALE_TEXT, spacing } from '@/theme';
+import { colors, createStyles, fonts, MAX_FONT_SCALE_TEXT, s, spacing } from '@/theme';
 
-const BUTTON_HEIGHT = 60;
+const BUTTON_HEIGHT = s(60);
 
 export default function MainScreen() {
   const insets = useSafeAreaInsets();
@@ -47,8 +48,8 @@ export default function MainScreen() {
     position.set(initialIndex);
   }
 
-  const bottomInset = Math.max(insets.bottom, 16) + 8;
-  const flow = useRelapseFlow(bottomInset + BUTTON_HEIGHT + 12);
+  const bottomInset = Math.max(insets.bottom, s(16)) + s(8);
+  const flow = useRelapseFlow(bottomInset + BUTTON_HEIGHT + s(12));
 
   const current: Habit | undefined = habits[Math.min(index, habits.length - 1)];
   // Показатели зависят только от календарной даты, поэтому пересчитываются раз в сутки и при изменении записей.
@@ -70,30 +71,35 @@ export default function MainScreen() {
   if (!current || !currentStats) return <Redirect href="/onboarding" />;
 
   const openAchievements = (id: Habit['id']) => router.push({ pathname: '/achievements', params: { habit: id } });
+  // До трёх привычек переключатель умещается в шапке рядом с кнопками, дальше ему нужна своя строка.
+  const tabsInHeader = habits.length > 1 && habits.length <= 3;
+  const tabs = habits.length > 1 && (
+    <HabitTabs
+      tabs={habits.map((h) => ({ key: h.id, label: habitName(h), emoji: h.emoji }))}
+      position={position}
+      selectedIndex={index}
+      onSelect={(i) => pager.current?.setPage(i)}
+    />
+  );
 
   const pages = habits.map((habit, i) => (
     <ScrollView
       key={habit.id}
-      contentContainerStyle={[styles.page, { paddingBottom: BUTTON_HEIGHT + bottomInset + 24 }]}
+      contentContainerStyle={[styles.page, { paddingBottom: BUTTON_HEIGHT + bottomInset + s(24) }]}
       showsVerticalScrollIndicator={false}
     >
-      <CounterCard habitId={habit.id} stats={stats[i]!} today={clock.today} />
-      <StatsCard habitId={habit.id} stats={stats[i]!} onGoalPress={() => openAchievements(habit.id)} />
-      <RelapsesCard habitId={habit.id} stats={stats[i]!} />
+      <CounterCard habit={habit} stats={stats[i]!} today={clock.today} />
+      <StatsCard habit={habit} stats={stats[i]!} onGoalPress={() => openAchievements(habit.id)} />
+      <RelapsesCard habit={habit} stats={stats[i]!} />
     </ScrollView>
   ));
 
   return (
     <View style={styles.root}>
-      <View style={[styles.topBar, { paddingTop: insets.top + 12 }]}>
+      <View style={[styles.topBar, { paddingTop: insets.top + s(12) }]}>
         <View style={styles.topLeft}>
-          {habits.length > 1 ? (
-            <SegmentedControl
-              segments={habits.map((h) => ({ key: h.id, label: t.habit[h.id] }))}
-              position={position}
-              selectedIndex={index}
-              onSelect={(i) => pager.current?.setPage(i)}
-            />
+          {tabsInHeader ? (
+            tabs
           ) : (
             <Text style={styles.appTitle} accessibilityRole="header" maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
               {t.appName}
@@ -110,6 +116,8 @@ export default function MainScreen() {
           <SettingsIcon color={colors.textPrimary} />
         </IconButton>
       </View>
+
+      {!tabsInHeader && tabs && <View style={styles.tabsRow}>{tabs}</View>}
 
       {habits.length > 1 ? (
         <PagerView
@@ -135,7 +143,7 @@ export default function MainScreen() {
       {flow.elements}
 
       <MilestoneOverlay
-        habitId={milestone != null ? current.id : null}
+        habit={milestone != null ? current : null}
         milestone={milestone}
         onClose={() => {
           if (milestone != null) markCelebrated(current.id, currentStats.streakStart, milestone).catch(console.error);
@@ -145,7 +153,7 @@ export default function MainScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   root: { flex: 1, backgroundColor: colors.background },
   topBar: {
     flexDirection: 'row',
@@ -155,6 +163,7 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   topLeft: { flex: 1, marginRight: 4 },
+  tabsRow: { paddingHorizontal: spacing.screenX, paddingTop: 4, paddingBottom: 2 },
   appTitle: { fontFamily: fonts.display700, fontSize: 20, color: colors.textPrimary },
   pager: { flex: 1 },
   // flexGrow: карточка срывов прижимается к низу страницы (marginTop: 'auto'), пока контент короче экрана.

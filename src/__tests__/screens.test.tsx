@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { reachedMilestones } from '@/domain/milestones';
-import type { Habit, Relapse } from '@/domain/types';
+import { emptyHabit, type Habit, type Relapse } from '@/domain/types';
 import { ClockProvider } from '@/hooks/clock';
 import { setLanguage, t } from '@/i18n';
 import { useAppStore } from '@/store/appStore';
@@ -21,6 +21,7 @@ jest.mock('@/db/repo', () => ({
   insertRelapse: jest.fn(() => Promise.resolve()),
   deleteRelapse: jest.fn(() => Promise.resolve()),
   saveSetting: jest.fn(() => Promise.resolve()),
+  deleteHabit: jest.fn(() => Promise.resolve()),
   resetAll: jest.fn(() => Promise.resolve()),
 }));
 jest.mock('@/db/database', () => ({ isExcludedFromBackup: () => false, initDatabase: jest.fn(() => Promise.resolve()) }));
@@ -35,7 +36,13 @@ jest.mock('expo-router', () => ({
   },
 }));
 
+jest.mock('@/components/DatePicker', () => ({
+  ...jest.requireActual<typeof import('@/components/DatePicker')>('@/components/DatePicker'),
+  pick: jest.fn((request: { mode: 'date' | 'time' }) => Promise.resolve(request.mode === 'date' ? '2026-09-28' : 0)),
+}));
+
 const repo = jest.requireMock<Record<string, jest.Mock>>('@/db/repo');
+const mockPick = jest.requireMock<{ pick: jest.Mock }>('@/components/DatePicker').pick;
 const mockRouter = jest.requireMock<{ router: Record<string, jest.Mock> }>('expo-router').router;
 
 const METRICS = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } };
@@ -51,7 +58,7 @@ async function renderScreen(ui: ReactElement) {
 // Данные из примера ТЗ: отказ от алкоголя 3 марта, три срыва, «сегодня» — 28 сентября 2026, 05:17 МСК.
 // Чистых дней с последнего срыва: алкоголь — 42, курение — 35; все достигнутые вехи уже показаны.
 const alcohol: Habit = {
-  id: 'alcohol',
+  ...emptyHabit('alcohol'),
   enabled: true,
   quitAt: '2026-03-03T00:00:00+03:00',
   milestonesEarned: reachedMilestones(42),
@@ -59,7 +66,7 @@ const alcohol: Habit = {
   celebratedUpTo: 30,
 };
 const smoking: Habit = {
-  id: 'smoking',
+  ...emptyHabit('smoking'),
   enabled: true,
   quitAt: '2026-08-10T00:00:00+03:00',
   milestonesEarned: reachedMilestones(35),
@@ -74,12 +81,40 @@ const relapses: Relapse[] = [
   { id: 'e', habitId: 'smoking', date: '2026-08-23', createdAt: '2026-08-24T09:00:00+03:00', kind: 'hookah', count: 1, note: null },
 ];
 
-function seed(habits: { alcohol: Habit; smoking: Habit }, list: Relapse[] = relapses) {
+function seed(habits: { alcohol: Habit; smoking: Habit; customs?: Habit[] }, list: Relapse[] = relapses) {
   useAppStore.setState({
     status: 'ready',
-    habits,
+    habits: [habits.alcohol, habits.smoking, ...(habits.customs ?? [])],
     relapses: list,
     settings: { onboarded: true, lastScreen: 'alcohol', excludeFromBackup: false, language: 'ru' },
+  });
+}
+
+const habitOf = (habits: Habit[], id: string): Habit => habits.find((h) => h.id === id)!;
+
+/** Своя привычка «Кофе» с двумя видами срыва; отказ 1 сентября, срывов нет. */
+const coffee: Habit = {
+  id: 'c0ffee00-0000-4000-8000-000000000001',
+  preset: null,
+  name: 'Кофе',
+  emoji: '☕️',
+  color: '#B45309',
+  unit: 'servings',
+  kinds: ['Эспрессо', 'Латте'],
+  order: 2,
+  enabled: true,
+  quitAt: '2026-09-01T00:00:00+03:00',
+  milestonesEarned: [],
+  celebratedSince: '2026-09-01',
+  celebratedUpTo: 21,
+};
+
+function seedFresh() {
+  useAppStore.setState({
+    status: 'ready',
+    habits: [emptyHabit('alcohol'), emptyHabit('smoking')],
+    relapses: [],
+    settings: { onboarded: false, lastScreen: null, excludeFromBackup: false, language: 'ru' },
   });
 }
 
@@ -286,7 +321,7 @@ describe('язык интерфейса', () => {
 
   it('сохранённый язык применяется при загрузке', async () => {
     repo.loadSnapshot!.mockResolvedValueOnce({
-      habits: { alcohol, smoking },
+      habits: [alcohol, smoking],
       relapses,
       settings: { onboarded: true, lastScreen: 'alcohol', excludeFromBackup: false, language: 'en' },
     });
@@ -298,10 +333,10 @@ describe('язык интерфейса', () => {
 
 describe('загрузка данных', () => {
   const legacySnapshot = () => ({
-    habits: {
-      alcohol: { ...alcohol, milestonesEarned: [1, 3, 7, 14, 30], celebratedSince: null, celebratedUpTo: 0 },
-      smoking: { ...smoking, milestonesEarned: [1, 3, 7, 14, 30], celebratedSince: null, celebratedUpTo: 0 },
-    },
+    habits: [
+      { ...alcohol, milestonesEarned: [1, 3, 7, 14, 30], celebratedSince: null, celebratedUpTo: 0 },
+      { ...smoking, milestonesEarned: [1, 3, 7, 14, 30], celebratedSince: null, celebratedUpTo: 0 },
+    ],
     relapses,
     settings: { onboarded: true, lastScreen: 'alcohol', excludeFromBackup: false, language: 'ru' },
   });
@@ -311,8 +346,8 @@ describe('загрузка данных', () => {
     await useAppStore.getState().load('2026-09-28');
     const state = useAppStore.getState();
     expect(state.status).toBe('ready');
-    expect(state.habits.alcohol).toMatchObject({ milestonesEarned: reachedMilestones(42), celebratedSince: '2026-08-17', celebratedUpTo: 30 });
-    expect(state.habits.smoking).toMatchObject({ milestonesEarned: reachedMilestones(35), celebratedSince: '2026-08-24', celebratedUpTo: 30 });
+    expect(habitOf(state.habits, 'alcohol')).toMatchObject({ milestonesEarned: reachedMilestones(42), celebratedSince: '2026-08-17', celebratedUpTo: 30 });
+    expect(habitOf(state.habits, 'smoking')).toMatchObject({ milestonesEarned: reachedMilestones(35), celebratedSince: '2026-08-24', celebratedUpTo: 30 });
     expect(repo.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ id: 'alcohol', milestonesEarned: reachedMilestones(42) }));
     // Поздравления задним числом нет.
     await renderScreen(<MainScreen />);
@@ -325,7 +360,7 @@ describe('загрузка данных', () => {
     const error = jest.spyOn(console, 'error').mockImplementation(() => {});
     await useAppStore.getState().load('2026-09-28');
     expect(useAppStore.getState().status).toBe('ready');
-    expect(useAppStore.getState().habits.alcohol.milestonesEarned).toEqual(reachedMilestones(42));
+    expect(habitOf(useAppStore.getState().habits, 'alcohol').milestonesEarned).toEqual(reachedMilestones(42));
     error.mockRestore();
   });
 
@@ -333,14 +368,14 @@ describe('загрузка данных', () => {
     // В прошлой серии заработано 5 и 10, в текущей (42 дня) поздравляли только до 5.
     repo.loadSnapshot!.mockResolvedValueOnce({
       ...legacySnapshot(),
-      habits: { alcohol: { ...alcohol, milestonesEarned: [5, 10], celebratedSince: '2026-08-17', celebratedUpTo: 5 }, smoking },
+      habits: [{ ...alcohol, milestonesEarned: [5, 10], celebratedSince: '2026-08-17', celebratedUpTo: 5 }, smoking],
     });
     await useAppStore.getState().load('2026-09-28');
-    expect(useAppStore.getState().habits.alcohol).toMatchObject({ milestonesEarned: reachedMilestones(42), celebratedUpTo: 5 });
+    expect(habitOf(useAppStore.getState().habits, 'alcohol')).toMatchObject({ milestonesEarned: reachedMilestones(42), celebratedUpTo: 5 });
   });
 
   it('вехи новой схемы при загрузке не трогаются', async () => {
-    repo.loadSnapshot!.mockResolvedValueOnce({ ...legacySnapshot(), habits: { alcohol, smoking } });
+    repo.loadSnapshot!.mockResolvedValueOnce({ ...legacySnapshot(), habits: [alcohol, smoking] });
     await useAppStore.getState().load('2026-09-28');
     expect(repo.saveHabit).not.toHaveBeenCalled();
   });
@@ -366,7 +401,7 @@ describe('календарь', () => {
     await renderScreen(<CalendarScreen />);
     expect(screen.getByText('Август 2026')).toBeTruthy();
 
-    await fireEvent.press(screen.getByLabelText('16 августа, срывы по алкоголю и курению'));
+    await fireEvent.press(screen.getByLabelText('16 августа, срыв: Алкоголь, Курение'));
     expect(screen.getByText('16 августа, воскресенье')).toBeTruthy();
     expect(screen.getByText('Алкоголь · некрепкое')).toBeTruthy();
     expect(screen.getByText('День рождения друга')).toBeTruthy();
@@ -407,18 +442,10 @@ describe('календарь', () => {
 
 describe('первый запуск', () => {
   it('настройка за три экрана', async () => {
-    useAppStore.setState({
-      status: 'ready',
-      habits: {
-        alcohol: { id: 'alcohol', enabled: false, quitAt: null, milestonesEarned: [], celebratedSince: null, celebratedUpTo: 0 },
-        smoking: { id: 'smoking', enabled: false, quitAt: null, milestonesEarned: [], celebratedSince: null, celebratedUpTo: 0 },
-      },
-      relapses: [],
-      settings: { onboarded: false, lastScreen: null, excludeFromBackup: false, language: 'ru' },
-    });
+    seedFresh();
     await renderScreen(<OnboardingScreen />);
 
-    expect(screen.getByText('Считаем дни без алкоголя и курения. Срыв не обнуляет ваш прогресс.')).toBeTruthy();
+    expect(screen.getByText('Считаем дни без алкоголя, курения и любой другой привычки. Срыв не обнуляет ваш прогресс.')).toBeTruthy();
     await fireEvent.press(screen.getByText('Начать'));
 
     const next = screen.getByRole('button', { name: 'Далее' });
@@ -436,5 +463,148 @@ describe('первый запуск', () => {
     ]);
     expect(mockRouter.replace).toHaveBeenCalledWith('/main');
     expect(useAppStore.getState().settings.lastScreen).toBe('smoking');
+  });
+});
+
+describe('свои привычки', () => {
+  it('на главном экране карточки своей привычки в её цвете, срыв без вида и с количеством порций', async () => {
+    seed({ alcohol, smoking, customs: [coffee] });
+    useAppStore.getState().setLastScreen(coffee.id);
+    await renderScreen(<MainScreen />);
+    // Три привычки — сегментный переключатель; текущая — кофе.
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs).toHaveLength(3);
+    expect(screen.getByRole('tab', { name: 'Кофе' })).toBeSelected();
+    expect(screen.getByLabelText('27 дней с начала, с 1 сентября')).toBeTruthy();
+    expect(screen.getByLabelText('27 чистых дней без срывов')).toBeTruthy();
+
+    await fireEvent.press(screen.getByText('Был срыв'));
+    expect(screen.getByText('Что это было')).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'Латте' })).toBeTruthy();
+    expect(screen.getByText('Сколько порций')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Записать' })).toBeDisabled();
+    await fireEvent.press(screen.getByRole('radio', { name: 'Латте' }));
+    await fireEvent.press(screen.getByLabelText('Больше'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Записать' }));
+    expect(repo.insertRelapse).toHaveBeenCalledWith(
+      expect.objectContaining({ habitId: coffee.id, kind: 'Латте', count: 2, date: '2026-09-28' }),
+    );
+    expect(screen.getByText('Латте · 1')).toBeTruthy();
+  });
+
+  it('привычка без видов срыва: вид не спрашивается, деньги вводятся суммой', async () => {
+    const money: Habit = { ...coffee, id: 'c0ffee00-0000-4000-8000-000000000002', name: 'Ставки', emoji: '🎰', unit: 'money', kinds: [] };
+    seed({ alcohol, smoking, customs: [money] });
+    useAppStore.getState().setLastScreen(money.id);
+    await renderScreen(<MainScreen />);
+    await fireEvent.press(screen.getByText('Был срыв'));
+    expect(screen.queryByText('Что это было')).toBeNull();
+    // Сумма не введена — записать нельзя.
+    expect(screen.getByRole('button', { name: 'Записать' })).toBeDisabled();
+    await fireEvent.changeText(screen.getByLabelText('Сколько денег'), '1500');
+    await fireEvent.press(screen.getByRole('button', { name: 'Записать' }));
+    expect(repo.insertRelapse).toHaveBeenCalledWith(expect.objectContaining({ habitId: money.id, kind: null, count: 1500 }));
+  });
+
+  it('календарь красит день своей привычки её цветом и подписывает итог названием', async () => {
+    const r: Relapse = { id: 'k', habitId: coffee.id, date: '2026-09-10', createdAt: '2026-09-10T10:00:00+03:00', kind: 'Латте', count: 1, note: null };
+    seed({ alcohol, smoking, customs: [coffee] }, [...relapses, r]);
+    mockParams = { filter: coffee.id };
+    await renderScreen(<CalendarScreen />);
+    // Четыре вкладки — прокручиваемые чипы с эмодзи.
+    expect(screen.getAllByRole('tab')).toHaveLength(4);
+    expect(screen.getByText('☕️')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('10 сентября, срыв: Кофе'));
+    expect(screen.getByText('Кофе · латте')).toBeTruthy();
+    expect(screen.getByLabelText('1 срыв «Кофе» за месяц')).toBeTruthy();
+  });
+
+  it('достижения своей привычки', async () => {
+    seed({ alcohol, smoking, customs: [{ ...coffee, milestonesEarned: reachedMilestones(27) }] });
+    mockParams = { habit: coffee.id };
+    await renderScreen(<AchievementsScreen />);
+    expect(screen.getByText('Последнее — 21 день без срывов · Кофе')).toBeTruthy();
+    expect(screen.getByText('Следующая цель — 30 дней, ещё 3 дня')).toBeTruthy();
+  });
+
+  it('при первом запуске можно добавить свою привычку', async () => {
+    seedFresh();
+    await renderScreen(<OnboardingScreen />);
+    await fireEvent.press(screen.getByText('Начать'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Добавить свою привычку' }));
+    expect(screen.getByText('Новая привычка')).toBeTruthy();
+
+    // Без названия и значка не сохраняется.
+    await fireEvent.press(screen.getByRole('button', { name: 'Добавить' }));
+    expect(screen.getByText('Введите название')).toBeTruthy();
+    await fireEvent.changeText(screen.getByLabelText('Название'), 'Сладкое');
+    await fireEvent.press(screen.getByRole('button', { name: 'Добавить' }));
+    expect(screen.getByText('Выберите эмодзи')).toBeTruthy();
+    await fireEvent.changeText(screen.getByLabelText('Значок'), '🍩🍰');
+    await fireEvent.press(screen.getByRole('radio', { name: 'Штуки' }));
+    await fireEvent.changeText(screen.getByLabelText('Виды срыва'), 'торт, конфеты, торт');
+    await fireEvent.press(screen.getByRole('button', { name: 'Добавить' }));
+
+    expect(screen.getByRole('button', { name: 'Сладкое. Считать дни без срывов: Сладкое' })).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Далее' }));
+    expect(screen.getByText('Сладкое')).toBeTruthy();
+    await fireEvent.press(screen.getByText('Готово'));
+
+    expect(repo.completeOnboarding).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 'alcohol', enabled: false, quitAt: null }),
+      expect.objectContaining({ id: 'smoking', enabled: false, quitAt: null }),
+      expect.objectContaining({
+        preset: null,
+        name: 'Сладкое',
+        emoji: '🍩',
+        unit: 'pieces',
+        kinds: ['торт', 'конфеты'],
+        order: 2,
+        enabled: true,
+        quitAt: '2026-09-28T00:00:00+03:00',
+      }),
+    ]);
+    expect(useAppStore.getState().habits).toHaveLength(3);
+  });
+
+  it('в настройках своя привычка добавляется, правится и удаляется', async () => {
+    seed({ alcohol, smoking });
+    await renderScreen(<SettingsScreen />);
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Добавить свою привычку' }));
+    expect(mockPick).toHaveBeenCalledWith(expect.objectContaining({ mode: 'date' }));
+    expect(await screen.findByText('Новая привычка')).toBeTruthy();
+    await fireEvent.changeText(screen.getByLabelText('Название'), 'Кофе');
+    await fireEvent.changeText(screen.getByLabelText('Значок'), '☕️');
+    await fireEvent.press(screen.getByRole('button', { name: 'Добавить' }));
+    expect(repo.saveHabit).toHaveBeenCalledWith(
+      expect.objectContaining({ preset: null, name: 'Кофе', emoji: '☕️', enabled: true, quitAt: '2026-09-28T00:00:00+03:00', order: 2 }),
+    );
+    const added = useAppStore.getState().habits.find((h) => h.name === 'Кофе')!;
+    expect(screen.getByLabelText('Считать: Кофе')).toBeTruthy();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Своя привычка: Изменить' }));
+    expect(screen.getByText('Изменить привычку')).toBeTruthy();
+    await fireEvent.changeText(screen.getByLabelText('Название'), 'Капучино');
+    await fireEvent.press(screen.getByRole('button', { name: 'Сохранить' }));
+    expect(useAppStore.getState().habits.find((h) => h.id === added.id)?.name).toBe('Капучино');
+
+    const { Alert } = jest.requireActual<typeof import('react-native')>('react-native');
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => {
+      buttons?.find((b) => b.style === 'destructive')?.onPress?.();
+    });
+    await fireEvent.press(screen.getByRole('button', { name: 'Своя привычка: Изменить' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Удалить привычку' }));
+    expect(repo.deleteHabit).toHaveBeenCalledWith(added.id);
+    expect(useAppStore.getState().habits).toHaveLength(2);
+    alert.mockRestore();
+  });
+
+  it('больше шести привычек добавить нельзя', async () => {
+    const customs = [1, 2, 3, 4].map((i) => ({ ...coffee, id: `c0ffee00-0000-4000-8000-00000000000${i}`, name: `Привычка ${i}`, order: 1 + i }));
+    seed({ alcohol, smoking, customs });
+    await renderScreen(<SettingsScreen />);
+    expect(screen.queryByRole('button', { name: 'Добавить свою привычку' })).toBeNull();
+    expect(screen.getByText('Можно вести не больше 6 привычек')).toBeTruthy();
   });
 });

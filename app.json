@@ -3,7 +3,7 @@
     "name": "Чистый счёт",
     "slug": "clean-count",
     "scheme": "cleancount",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -21,7 +21,7 @@
       "config": {
         "usesNonExemptEncryption": false
       },
-      "buildNumber": "2",
+      "buildNumber": "3",
       "appleTeamId": "U8Z9KKJ636"
     },
     "android": {

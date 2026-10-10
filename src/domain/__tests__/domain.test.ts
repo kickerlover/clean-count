@@ -14,10 +14,25 @@ import {
   reachedMilestones,
   tierMilestones,
 } from '../milestones';
+import {
+  canAddHabit,
+  createCustomHabit,
+  firstGrapheme,
+  habitCountsAmount,
+  habitKinds,
+  parseKinds,
+  sortHabits,
+  validateCustomHabit,
+} from '../habits';
 import { buildRelapse, isRelapseDateAllowed, relapseDateRange } from '../relapse';
-import type { Habit, Relapse } from '../types';
+import { emptyHabit, type Habit, type Relapse } from '../types';
 
 const MSK = 'Europe/Moscow';
+
+const coffee: Habit = {
+  ...createCustomHabit({ name: 'Кофе', emoji: '☕️', color: '#B45309', unit: 'servings', kinds: 'Эспрессо, Латте' }, 'coffee', 2),
+  quitAt: '2026-09-01T00:00:00+03:00',
+};
 
 describe('календарные даты', () => {
   it('арифметика дат через границы месяцев и годов', () => {
@@ -133,15 +148,17 @@ describe('склонения', () => {
   });
 
   it('итог месяца в календаре склоняется', () => {
-    expect(t.calendar.monthTotal(0, 'alcohol')).toBe('срывов по алкоголю за месяц');
-    expect(t.calendar.monthTotal(1, 'smoking')).toBe('срыв по курению за месяц');
-    expect(t.calendar.monthTotal(2, 'alcohol')).toBe('срыва по алкоголю за месяц');
-    expect(t.calendar.monthTotalA11y(2, 'alcohol')).toBe('2 срыва по алкоголю за месяц');
+    expect(t.calendar.monthTotal(0, emptyHabit('alcohol'))).toBe('срывов по алкоголю за месяц');
+    expect(t.calendar.monthTotal(1, emptyHabit('smoking'))).toBe('срыв по курению за месяц');
+    expect(t.calendar.monthTotal(2, emptyHabit('alcohol'))).toBe('срыва по алкоголю за месяц');
+    expect(t.calendar.monthTotalA11y(2, emptyHabit('alcohol'))).toBe('2 срыва по алкоголю за месяц');
+    expect(t.calendar.monthTotal(1, coffee)).toBe('срыв «Кофе» за месяц');
   });
 
   it('подпись вехи: чистые дни без срыва', () => {
-    expect(t.milestone.days(40, 'alcohol')).toBe('дней без алкоголя');
-    expect(t.milestone.days(5, 'smoking')).toBe('дней без курения');
+    expect(t.milestone.days(40, emptyHabit('alcohol'))).toBe('дней без алкоголя');
+    expect(t.milestone.days(5, emptyHabit('smoking'))).toBe('дней без курения');
+    expect(t.milestone.days(5, coffee)).toBe('дней без срывов · Кофе');
   });
 
   it('текст поздравления меняется по рубежам месяца, трёх месяцев, полугода и года', () => {
@@ -198,7 +215,7 @@ describe('форматирование дат', () => {
 });
 
 describe('запись срыва', () => {
-  const h: Habit = { id: 'smoking', enabled: true, quitAt: '2026-09-01T00:00:00+03:00', milestonesEarned: [], celebratedSince: null, celebratedUpTo: 0 };
+  const h: Habit = { ...emptyHabit('smoking'), enabled: true, quitAt: '2026-09-01T00:00:00+03:00' };
   const now = new Date('2026-09-10T12:00:00+03:00');
 
   it('дату нельзя выбрать раньше отказа или в будущем', () => {
@@ -209,11 +226,13 @@ describe('запись срыва', () => {
     expect(isRelapseDateAllowed(h, '2026-09-11', now, MSK)).toBe(false);
   });
 
-  it('количество ограничено 1–99, заметка — 300 символами', () => {
+  it('количество ограничено 1–999 999, заметка — 300 символами, пустой вид — null', () => {
     const r = buildRelapse({ habitId: 'smoking', date: '2026-09-10', kind: 'vape', count: 150, note: '  ' }, 'id', now, MSK);
-    expect(r.count).toBe(99);
+    expect(r.count).toBe(150);
     expect(r.note).toBeNull();
     expect(r.createdAt).toBe('2026-09-10T12:00:00+03:00');
+    expect(buildRelapse({ habitId: 'x', date: '2026-09-10', kind: null, count: 5_000_000 }, 'id', now, MSK).count).toBe(999_999);
+    expect(buildRelapse({ habitId: 'x', date: '2026-09-10', kind: '  ', count: 0 }, 'id', now, MSK)).toMatchObject({ kind: null, count: 1 });
     const long = buildRelapse({ habitId: 'alcohol', date: '2026-09-10', kind: 'strong', note: 'x'.repeat(400) }, 'id', now, MSK);
     expect(long.note).toHaveLength(300);
     expect(long.count).toBe(1);
@@ -221,8 +240,8 @@ describe('запись срыва', () => {
 });
 
 describe('календарь', () => {
-  const alcohol: Habit = { id: 'alcohol', enabled: true, quitAt: '2026-08-05T00:00:00+03:00', milestonesEarned: [], celebratedSince: null, celebratedUpTo: 0 };
-  const smoking: Habit = { id: 'smoking', enabled: true, quitAt: '2026-08-10T00:00:00+03:00', milestonesEarned: [], celebratedSince: null, celebratedUpTo: 0 };
+  const alcohol: Habit = { ...emptyHabit('alcohol'), enabled: true, quitAt: '2026-08-05T00:00:00+03:00' };
+  const smoking: Habit = { ...emptyHabit('smoking'), enabled: true, quitAt: '2026-08-10T00:00:00+03:00' };
   const mk = (id: string, habitId: Relapse['habitId'], date: string, kind: Relapse['kind']): Relapse => ({
     id, habitId, date, createdAt: `${date}T20:00:00+03:00`, kind, count: 1, note: null,
   });
@@ -241,8 +260,10 @@ describe('календарь', () => {
     expect(month.leadingBlanks).toBe(5); // 1 августа 2026 — суббота
     expect(state(2)).toBe('inactive');
     expect(state(5)).toBe('clean');
-    expect(state(16)).toBe('both');
-    expect(state(23)).toBe('smoking');
+    expect(state(16)).toBe('relapse');
+    expect(month.days[15]!.habitIds).toEqual(['alcohol', 'smoking']);
+    expect(state(23)).toBe('relapse');
+    expect(month.days[22]!.habitIds).toEqual(['smoking']);
     expect(state(26)).toBe('inactive');
     expect(month.days[24]!.isToday).toBe(true);
     expect(month.totals).toEqual({ alcohol: 1, smoking: 2 });
@@ -250,7 +271,8 @@ describe('календарь', () => {
 
   it('фильтр по привычке', () => {
     const month = buildMonth({ year: 2026, month: 8 }, [alcohol, smoking], relapses, 'alcohol', today);
-    expect(month.days[15]!.state).toBe('alcohol');
+    expect(month.days[15]!.state).toBe('relapse');
+    expect(month.days[15]!.habitIds).toEqual(['alcohol']);
     expect(month.days[15]!.relapses.map((r) => r.id)).toEqual(['a2']);
     expect(month.days[22]!.state).toBe('clean');
 
@@ -260,8 +282,17 @@ describe('календарь', () => {
 
   it('выключенная привычка не показывается', () => {
     const month = buildMonth({ year: 2026, month: 8 }, [alcohol, { ...smoking, enabled: false }], relapses, 'all', today);
-    expect(month.days[15]!.state).toBe('alcohol');
-    expect(month.totals.smoking).toBe(0);
+    expect(month.days[15]!.habitIds).toEqual(['alcohol']);
+    expect(month.totals).toEqual({ alcohol: 1 }); // итогов у выключенной нет, экран подставляет 0
+  });
+
+  it('своя привычка участвует в календаре наравне со встроенными', () => {
+    const custom: Habit = { ...coffee, quitAt: '2026-08-01T00:00:00+03:00' };
+    const month = buildMonth({ year: 2026, month: 8 }, [alcohol, smoking, custom], [...relapses, mk('c1', custom.id, '2026-08-16', 'Латте')], 'all', today);
+    expect(month.days[15]!.habitIds).toEqual(['alcohol', 'smoking', custom.id]);
+    expect(month.totals[custom.id]).toBe(1);
+    expect(month.days[1]!.state).toBe('clean'); // отказ от кофе раньше остальных
+    expect(monthRange([alcohol, smoking, custom], '2026-09-01')).toHaveLength(2);
   });
 
   it('диапазон месяцев — от самой ранней даты отказа до текущего', () => {
@@ -270,5 +301,50 @@ describe('календарь', () => {
       { year: 2026, month: 9 },
       { year: 2026, month: 10 },
     ]);
+  });
+});
+
+describe('свои привычки', () => {
+  it('первая графема: эмодзи с модификаторами не режутся', () => {
+    expect(firstGrapheme('  ☕️ кофе')).toBe('☕️');
+    expect(firstGrapheme('👨‍👩‍👧x')).toBe('👨‍👩‍👧');
+    expect(firstGrapheme('ab')).toBe('a');
+    expect(firstGrapheme('   ')).toBe('');
+  });
+
+  it('виды срыва: через запятую, без дублей и пустых, не больше восьми и двадцати символов', () => {
+    expect(parseKinds(' торт, конфеты ,, Торт; печенье\nкекс')).toEqual(['торт', 'конфеты', 'печенье', 'кекс']);
+    expect(parseKinds(Array.from({ length: 12 }, (_, i) => `вид ${i}`))).toHaveLength(8);
+    expect(parseKinds('x'.repeat(30))).toEqual(['x'.repeat(20)]);
+    expect(parseKinds('')).toEqual([]);
+  });
+
+  it('проверка ввода: нужны название и эмодзи', () => {
+    const base = { name: 'Кофе', emoji: '☕️', color: '#B45309', unit: 'times' as const, kinds: '' };
+    expect(validateCustomHabit(base)).toBeNull();
+    expect(validateCustomHabit({ ...base, name: '   ' })).toBe('name');
+    expect(validateCustomHabit({ ...base, emoji: '' })).toBe('emoji');
+  });
+
+  it('создание: обрезает название, берёт одну графему, включена без даты', () => {
+    const h = createCustomHabit({ name: ` ${'н'.repeat(40)} `, emoji: '🍩🍰', color: '#000000', unit: 'money', kinds: 'a, b' }, 'id1', 5);
+    expect(h).toMatchObject({ id: 'id1', preset: null, name: 'н'.repeat(24), emoji: '🍩', unit: 'money', kinds: ['a', 'b'], order: 5, enabled: true, quitAt: null });
+    expect(h.milestonesEarned).toEqual([]);
+  });
+
+  it('виды и количество: у встроенных из словаря, у алкоголя количество не считается', () => {
+    expect(habitKinds(emptyHabit('alcohol'))).toEqual(['strong', 'light']);
+    expect(habitKinds(coffee)).toEqual(['Эспрессо', 'Латте']);
+    expect(habitCountsAmount(emptyHabit('alcohol'))).toBe(false);
+    expect(habitCountsAmount(emptyHabit('smoking'))).toBe(true);
+    expect(habitCountsAmount(coffee)).toBe(true);
+  });
+
+  it('лимит шесть привычек и порядок показа', () => {
+    const presets = [emptyHabit('alcohol'), emptyHabit('smoking')];
+    expect(canAddHabit(presets)).toBe(true);
+    const six = [...presets, ...[2, 3, 4, 5].map((o) => ({ ...coffee, id: `c${o}`, order: o }))];
+    expect(canAddHabit(six)).toBe(false);
+    expect(sortHabits([{ ...coffee, order: 9 }, emptyHabit('smoking'), emptyHabit('alcohol')]).map((h) => h.id)).toEqual(['alcohol', 'smoking', 'coffee']);
   });
 });

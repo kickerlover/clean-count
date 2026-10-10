@@ -1,20 +1,21 @@
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconButton } from '@/components/buttons';
+import { HabitTabs } from '@/components/HabitTabs';
 import { CheckIcon, ChevronLeftIcon } from '@/components/icons';
-import { SegmentedControl } from '@/components/SegmentedControl';
 import { achievedMilestones, lastReachedMilestone, milestonesUpTo, reachedMilestones, tierMilestones } from '@/domain/milestones';
 import { computeHabitStats } from '@/domain/stats';
 import { useClock } from '@/hooks/clock';
 import { useEnabledHabits } from '@/hooks/useEnabledHabits';
 import { useLanguage } from '@/hooks/useLanguage';
 import { t } from '@/i18n';
+import { habitName } from '@/i18n/habits';
 import { useAppStore } from '@/store/appStore';
-import { colors, fonts, habitColor, MAX_FONT_SCALE_NUMBERS, MAX_FONT_SCALE_TEXT, radii, spacing } from '@/theme';
+import { colors, createStyles, fonts, MAX_FONT_SCALE_NUMBERS, MAX_FONT_SCALE_TEXT, radii, s, spacing } from '@/theme';
 
 const BADGE_COLUMNS = 5;
 const BADGE_GAP = 8;
@@ -42,7 +43,7 @@ export default function AchievementsScreen() {
 
   if (!habit || !stats) return <Redirect href="/main" />;
 
-  const color = habitColor[habit.id];
+  const color = habit.color;
   const best = achieved[achieved.length - 1] ?? 0;
   // Вехи текущей серии закрашены, заработанные в прошлых сериях — с обводкой.
   const currentTop = lastReachedMilestone(stats.daysSinceRelapse);
@@ -53,7 +54,7 @@ export default function AchievementsScreen() {
   const badges = milestonesUpTo(stats.goal);
   const earlierCount = achieved.filter((m) => m > currentTop).length;
   // Ровная сетка: пять плиток в ряд одинаковой ширины независимо от числа цифр.
-  const badgeWidth = Math.floor((width - spacing.screenX * 2 - BADGE_GAP * (BADGE_COLUMNS - 1)) / BADGE_COLUMNS);
+  const badgeWidth = Math.floor((width - s(spacing.screenX) * 2 - s(BADGE_GAP) * (BADGE_COLUMNS - 1)) / BADGE_COLUMNS);
 
   const select = (i: number) => {
     position.set(withTiming(i, { duration: 220 }));
@@ -63,7 +64,7 @@ export default function AchievementsScreen() {
   return (
     <ScrollView
       style={styles.root}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 28 }]}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + s(12), paddingBottom: insets.bottom + s(28) }]}
     >
       <View style={styles.header}>
         <IconButton label={t.achievements.back} onPress={() => router.back()}>
@@ -75,8 +76,8 @@ export default function AchievementsScreen() {
       </View>
 
       {habits.length > 1 && (
-        <SegmentedControl
-          segments={habits.map((h) => ({ key: h.id, label: t.habit[h.id] }))}
+        <HabitTabs
+          tabs={habits.map((h) => ({ key: h.id, label: habitName(h), emoji: h.emoji }))}
           position={position}
           selectedIndex={index}
           onSelect={select}
@@ -92,7 +93,7 @@ export default function AchievementsScreen() {
         </Text>
         {best > 0 && (
           <Text style={styles.summaryText} maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
-            {t.achievements.last(best, habit.id)}
+            {t.achievements.last(best, habit)}
           </Text>
         )}
         {achieved.length > 0 && (
@@ -206,7 +207,7 @@ function LegendItem({ label, fill, border, dashed }: { label: string; fill?: str
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   root: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: spacing.screenX, gap: 14 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 2 },

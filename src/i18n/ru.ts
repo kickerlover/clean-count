@@ -1,4 +1,4 @@
-import type { HabitId, Language, RelapseKind } from '@/domain/types';
+import type { Habit, HabitUnit, Language, PresetId, PresetKind } from '@/domain/types';
 
 import { plural, type PluralForms } from './plural';
 
@@ -11,14 +11,18 @@ const MONTH: PluralForms = ['месяц', 'месяца', 'месяцев'];
 const cleanDays = (n: number) => `${n} ${plural(n, CLEAN_DAY)}`;
 const COUNTER_SUFFIX = 'с начала';
 const counterSince = (since: string) => `с ${since}`;
-const monthTotal = (n: number, habit: HabitId) =>
-  `${plural(n, RELAPSE)} по ${habit === 'alcohol' ? 'алкоголю' : 'курению'} за месяц`;
+const monthTotal = (n: number, habit: Habit) =>
+  habit.preset
+    ? `${plural(n, RELAPSE)} по ${habit.preset === 'alcohol' ? 'алкоголю' : 'курению'} за месяц`
+    : `${plural(n, RELAPSE)} «${habit.name}» за месяц`;
 const remain = (n: number) => plural(n, ['остаётся', 'остаются', 'остаются']);
 
-const HABIT_WITHOUT_GENITIVE: Record<HabitId, string> = {
+const HABIT_WITHOUT_GENITIVE: Record<PresetId, string> = {
   alcohol: 'без алкоголя',
   smoking: 'без курения',
 };
+/** «без алкоголя» у встроенных, «без срывов · Кофе» у своих. */
+const withoutHabit = (habit: Habit) => (habit.preset ? HABIT_WITHOUT_GENITIVE[habit.preset] : `без срывов · ${habit.name}`);
 
 export const ru = {
   appName: 'Чистый счёт',
@@ -38,12 +42,48 @@ export const ru = {
   habit: {
     alcohol: 'Алкоголь',
     smoking: 'Курение',
-  } satisfies Record<HabitId, string>,
+  } satisfies Record<PresetId, string>,
   habitWithout: {
     alcohol: 'Без алкоголя',
     smoking: 'Без курения',
-  } satisfies Record<HabitId, string>,
+  } satisfies Record<PresetId, string>,
   habitWithoutGenitive: HABIT_WITHOUT_GENITIVE,
+
+  units: {
+    times: 'Разы',
+    pieces: 'Штуки',
+    servings: 'Порции',
+    minutes: 'Минуты',
+    money: 'Деньги',
+  } satisfies Record<HabitUnit, string>,
+
+  habits: {
+    custom: 'Своя привычка',
+    add: 'Добавить свою привычку',
+    limit: (n: number) => `Можно вести не больше ${n} привычек`,
+    newTitle: 'Новая привычка',
+    editTitle: 'Изменить привычку',
+    name: 'Название',
+    namePlaceholder: 'Например, кофе',
+    emoji: 'Значок',
+    emojiPlaceholder: '☕️',
+    emojiHint: 'Любой эмодзи с клавиатуры',
+    color: 'Цвет',
+    unit: 'Что считать при срыве',
+    kinds: 'Виды срыва',
+    kindsPlaceholder: 'Например: кофе, энергетик',
+    kindsHint: 'Через запятую, необязательно',
+    create: 'Добавить',
+    save: 'Сохранить',
+    cancel: 'Отмена',
+    edit: 'Изменить',
+    delete: 'Удалить привычку',
+    deleteTitle: 'Удалить привычку?',
+    deleteText: 'Удалятся все её срывы и достижения.',
+    errorName: 'Введите название',
+    errorEmoji: 'Выберите эмодзи',
+    cardText: (name: string) => `Считать дни без срывов: ${name}`,
+  },
 
   kind: {
     strong: 'Крепкое',
@@ -54,7 +94,7 @@ export const ru = {
     heated: 'Нагреватель',
     cigar: 'Сигара',
     other: 'Другое',
-  } satisfies Record<RelapseKind, string>,
+  } satisfies Record<PresetKind, string>,
   kindHint: {
     strong: 'водка, коньяк, виски',
     light: 'пиво, вино, сидр',
@@ -62,7 +102,7 @@ export const ru = {
 
   onboarding: {
     welcomeTitle: 'Чистый счёт',
-    welcomeText: 'Считаем дни без алкоголя и курения. Срыв не обнуляет ваш прогресс.',
+    welcomeText: 'Считаем дни без алкоголя, курения и любой другой привычки. Срыв не обнуляет ваш прогресс.',
     welcomePoints: [
       'Общий счёт и чистые дни с последнего срыва',
       'Календарь срывов',
@@ -70,11 +110,11 @@ export const ru = {
     ],
     start: 'Начать',
     habitsTitle: 'От чего отказываетесь?',
-    habitsText: 'Можно выбрать одно или оба. Настройки можно поменять позже.',
+    habitsText: 'Выберите встроенные или добавьте свою. Всё можно поменять позже в настройках.',
     habitCardText: {
       alcohol: 'Считать дни без алкоголя',
       smoking: 'Считать дни без сигарет, вейпа и кальяна',
-    } satisfies Record<HabitId, string>,
+    } satisfies Record<PresetId, string>,
     next: 'Далее',
     back: 'Назад',
     datesTitle: 'Когда вы отказались?',
@@ -134,7 +174,16 @@ export const ru = {
     phraseNoDays: 'Отсчёт начнётся заново. Главное — что вы продолжаете.',
     alcoholKind: 'Что это было',
     smokingKind: 'Что курили',
+    kindTitle: 'Что это было',
     count: 'Сколько раз',
+    countLabel: {
+      times: 'Сколько раз',
+      pieces: 'Сколько штук',
+      servings: 'Сколько порций',
+      minutes: 'Сколько минут',
+      money: 'Сколько денег',
+    } satisfies Record<HabitUnit, string>,
+    amountPlaceholder: 'Сумма',
     countLess: 'Меньше',
     countMore: 'Больше',
     when: 'Когда',
@@ -168,23 +217,22 @@ export const ru = {
     addRelapse: 'Добавить срыв',
     chooseHabit: 'Какой срыв записать?',
     relapseLabel: (habit: string, kind: string, count: number) =>
-      `${habit} · ${kind.toLowerCase()}${count > 1 ? ` ×${count}` : ''}`,
+      `${habit}${kind ? ` · ${kind.toLowerCase()}` : ''}${count > 1 ? ` ×${count}` : ''}`,
     deleteHint: 'Удерживайте, чтобы удалить',
     deleteTitle: 'Удалить запись?',
     deleteText: 'Показатели будут пересчитаны.',
     delete: 'Удалить запись',
     cancel: 'Отмена',
     monthTotal,
-    monthTotalA11y: (n: number, habit: HabitId) => `${n} ${monthTotal(n, habit)}`,
+    monthTotalA11y: (n: number, habit: Habit) => `${n} ${monthTotal(n, habit)}`,
     dayA11y: (label: string, state: string) => `${label}${state ? `, ${state}` : ''}`,
     stateA11y: {
       clean: 'чистый день',
-      alcohol: 'срыв по алкоголю',
-      smoking: 'срыв по курению',
-      both: 'срывы по алкоголю и курению',
       inactive: 'недоступно',
       today: 'сегодня',
     },
+    /** «срыв: Алкоголь, Кофе» — привычки, у которых в этот день был срыв. */
+    relapseA11y: (names: string) => `срыв: ${names}`,
   },
 
   achievements: {
@@ -192,7 +240,7 @@ export const ru = {
     count: (n: number) => `${n} ${plural(n, ['достижение', 'достижения', 'достижений'])}`,
     none: 'Пока нет достижений',
     inStreak: (n: number) => `В текущей серии — ${n} ${plural(n, ['веха', 'вехи', 'вех'])}`,
-    last: (n: number, habit: HabitId) => `Последнее — ${n} ${plural(n, DAY)} ${HABIT_WITHOUT_GENITIVE[habit]}`,
+    last: (n: number, habit: Habit) => `Последнее — ${n} ${plural(n, DAY)} ${withoutHabit(habit)}`,
     next: (goal: number, remaining: number) =>
       `Следующая цель — ${goal} ${plural(goal, DAY)}, ещё ${remaining} ${plural(remaining, DAY)}`,
     tiers: 'Главные рубежи',
@@ -223,7 +271,7 @@ export const ru = {
   milestone: {
     title: 'Новая веха!',
     /** Веха считается по чистым дням с последнего срыва, поэтому «без» здесь правда. */
-    days: (n: number, habit: HabitId) => `${plural(n, DAY)} ${HABIT_WITHOUT_GENITIVE[habit]}`,
+    days: (n: number, habit: Habit) => `${plural(n, DAY)} ${withoutHabit(habit)}`,
     /** Ярусы по числу дней: текст меняется по рубежам месяца, трёх месяцев, полугода и года. */
     text: (n: number): string =>
       n >= 365

@@ -1,20 +1,25 @@
+import { randomUUID } from 'expo-crypto';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PillButton } from '@/components/buttons';
 import { pick } from '@/components/DatePicker';
-import { CheckIcon, GlassIcon, SmokingKindIcon } from '@/components/icons';
+import { HabitFormSheet } from '@/components/habit/HabitFormSheet';
+import { HabitIcon } from '@/components/HabitIcon';
+import { CheckIcon, GlassIcon, PlusIcon, SmokingKindIcon } from '@/components/icons';
+import { applyCustomHabit, createCustomHabit, type CustomHabitInput } from '@/domain/habits';
 import { localDateTime, toZoned } from '@/domain/localDate';
-import { HABIT_IDS, type HabitId, type LocalDate } from '@/domain/types';
+import { emptyHabit, MAX_HABITS, PRESET_IDS, type Habit, type HabitId, type LocalDate, type PresetId } from '@/domain/types';
 import { readNow, useClock } from '@/hooks/clock';
 import { useLanguage } from '@/hooks/useLanguage';
 import { t } from '@/i18n';
 import { formatFullDate, formatTime } from '@/i18n/format';
+import { habitLabel, habitName } from '@/i18n/habits';
 import { useAppStore } from '@/store/appStore';
-import { colors, fieldRow, fonts, habitColor, HIT, MAX_FONT_SCALE_TEXT, radii, spacing } from '@/theme';
+import { colors, createStyles, fieldRow, fonts, HIT, MAX_FONT_SCALE_TEXT, radii, s, spacing } from '@/theme';
 
 const STEPS = 3;
 
@@ -24,32 +29,54 @@ interface QuitDraft {
   minutes: number | null;
 }
 
+const PRESETS: Habit[] = PRESET_IDS.map(emptyHabit);
+
 export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const { today } = useClock();
   useLanguage();
   const completeOnboarding = useAppStore((s) => s.completeOnboarding);
   const [step, setStep] = useState(0);
-  const [selected, setSelected] = useState<HabitId[]>([]);
-  const [drafts, setDrafts] = useState<Record<HabitId, QuitDraft>>({
-    alcohol: { date: today, minutes: null },
-    smoking: { date: today, minutes: null },
-  });
+  const [selected, setSelected] = useState<PresetId[]>([]);
+  /** Свои привычки, добавленные на шаге выбора; порядок — после встроенных. */
+  const [customs, setCustoms] = useState<Habit[]>([]);
+  const [drafts, setDrafts] = useState<Record<HabitId, QuitDraft>>({});
+  const [form, setForm] = useState<{ visible: boolean; editing: Habit | null }>({ visible: false, editing: null });
   const [saving, setSaving] = useState(false);
 
-  const toggle = (id: HabitId) =>
-    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : HABIT_IDS.filter((h) => h === id || s.includes(h))));
+  const draftOf = (id: HabitId): QuitDraft => drafts[id] ?? { date: today, minutes: null };
+  const chosen: Habit[] = [...PRESETS.filter((h) => selected.includes(h.id as PresetId)), ...customs];
+  const canAddCustom = PRESETS.length + customs.length < MAX_HABITS;
 
-  const updateDraft = (id: HabitId, patch: Partial<QuitDraft>) => setDrafts((d) => ({ ...d, [id]: { ...d[id], ...patch } }));
+  const toggle = (id: PresetId) =>
+    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : PRESET_IDS.filter((h) => h === id || s.includes(h))));
+
+  const updateDraft = (id: HabitId, patch: Partial<QuitDraft>) => setDrafts((d) => ({ ...d, [id]: { ...draftOf(id), ...patch } }));
 
   const pickDate = async (id: HabitId) => {
-    const value = await pick({ mode: 'date', value: drafts[id].date, max: readNow().today });
+    const value = await pick({ mode: 'date', value: draftOf(id).date, max: readNow().today });
     if (value) updateDraft(id, { date: value });
   };
 
   const pickTime = async (id: HabitId) => {
-    const value = await pick({ mode: 'time', value: drafts[id].minutes ?? 0 });
+    const value = await pick({ mode: 'time', value: draftOf(id).minutes ?? 0 });
     if (value != null) updateDraft(id, { minutes: value });
+  };
+
+  const submitCustom = (input: CustomHabitInput) => {
+    if (form.editing) {
+      const edited = form.editing;
+      setCustoms((list) => list.map((h) => (h.id === edited.id ? applyCustomHabit(h, input) : h)));
+    } else {
+      setCustoms((list) => [...list, createCustomHabit(input, randomUUID(), PRESETS.length + list.length)]);
+    }
+  };
+
+  const removeCustom = () => {
+    const editing = form.editing;
+    if (!editing) return;
+    setCustoms((list) => list.filter((h) => h.id !== editing.id).map((h, i) => ({ ...h, order: PRESETS.length + i })));
+    setForm({ visible: false, editing: null });
   };
 
   const finish = async () => {
@@ -57,12 +84,19 @@ export default function OnboardingScreen() {
     setSaving(true);
     try {
       const { tz, today: now } = readNow();
-      const quitDates: Partial<Record<HabitId, string>> = {};
-      for (const id of selected) {
-        const date = drafts[id].date > now ? now : drafts[id].date;
-        quitDates[id] = toZoned(localDateTime(date, drafts[id].minutes ?? 0, tz), tz);
-      }
-      await completeOnboarding(quitDates);
+      const quitAt = (id: HabitId) => {
+        const draft = draftOf(id);
+        const date = draft.date > now ? now : draft.date;
+        return toZoned(localDateTime(date, draft.minutes ?? 0, tz), tz);
+      };
+      const habits: Habit[] = [
+        ...PRESETS.map((h) => {
+          const on = selected.includes(h.id as PresetId);
+          return { ...h, enabled: on, quitAt: on ? quitAt(h.id) : null };
+        }),
+        ...customs.map((h) => ({ ...h, quitAt: quitAt(h.id) })),
+      ];
+      await completeOnboarding(habits);
       router.replace('/main');
     } catch (e) {
       console.error(e);
@@ -72,7 +106,7 @@ export default function OnboardingScreen() {
   };
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top + 16, paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
+    <View style={[styles.root, { paddingTop: insets.top + s(16), paddingBottom: Math.max(insets.bottom, s(16)) + s(8) }]}>
       <View style={styles.progress} accessible accessibilityLabel={t.onboarding.step(step + 1, STEPS)}>
         {Array.from({ length: STEPS }, (_, i) => (
           <View key={i} style={[styles.dot, i === step && styles.dotActive, i < step && styles.dotDone]} />
@@ -88,6 +122,9 @@ export default function OnboardingScreen() {
               </View>
               <View style={[styles.heroTile, { backgroundColor: colors.smoking }]}>
                 <SmokingKindIcon kind="cigarette" size={40} color={colors.onAccent} />
+              </View>
+              <View style={[styles.heroTile, styles.heroTilePlus]}>
+                <PlusIcon size={34} color={colors.textPrimary} />
               </View>
             </View>
             <Text style={styles.title} accessibilityRole="header" maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
@@ -119,39 +156,49 @@ export default function OnboardingScreen() {
             <Text style={styles.lead} maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
               {t.onboarding.habitsText}
             </Text>
-            {HABIT_IDS.map((id) => {
+            {PRESETS.map((habit) => {
+              const id = habit.id as PresetId;
               const on = selected.includes(id);
-              const color = habitColor[id];
               return (
-                <Pressable
+                <HabitCard
                   key={id}
+                  habit={habit}
+                  on={on}
+                  subtitle={t.onboarding.habitCardText[id]}
                   onPress={() => toggle(id)}
                   accessibilityRole="switch"
-                  accessibilityState={{ checked: on }}
-                  accessibilityLabel={`${t.habit[id]}. ${t.onboarding.habitCardText[id]}`}
-                  style={[styles.habitCard, on ? { backgroundColor: color, borderColor: color } : styles.habitCardIdle]}
-                >
-                  <View style={[styles.habitIcon, { backgroundColor: on ? 'rgba(255,255,255,0.18)' : colors.subtle }]}>
-                    {id === 'alcohol' ? (
-                      <GlassIcon color={on ? colors.onAccent : colors.textPrimary} />
-                    ) : (
-                      <SmokingKindIcon kind="cigarette" size={28} color={on ? colors.onAccent : colors.textPrimary} />
-                    )}
-                  </View>
-                  <View style={styles.habitText}>
-                    <Text style={[styles.habitTitle, on && styles.onAccent]} maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
-                      {t.habit[id]}
-                    </Text>
-                    <Text style={[styles.habitSub, on && styles.onAccent]} maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
-                      {t.onboarding.habitCardText[id]}
-                    </Text>
-                  </View>
-                  <View style={[styles.check, on ? styles.checkOn : styles.checkOff]}>
-                    {on && <CheckIcon size={16} color={color} />}
-                  </View>
-                </Pressable>
+                />
               );
             })}
+            {customs.map((habit) => (
+              <HabitCard
+                key={habit.id}
+                habit={habit}
+                on
+                subtitle={t.habits.cardText(habit.name)}
+                onPress={() => setForm({ visible: true, editing: habit })}
+                accessibilityRole="button"
+                accessibilityHint={t.habits.edit}
+              />
+            ))}
+            {canAddCustom ? (
+              <Pressable
+                onPress={() => setForm({ visible: true, editing: null })}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.addCard, pressed && styles.pressed]}
+              >
+                <View style={[styles.habitIcon, { backgroundColor: colors.subtle }]}>
+                  <PlusIcon size={22} color={colors.textPrimary} />
+                </View>
+                <Text style={styles.addText} maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
+                  {t.habits.add}
+                </Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.limit} maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
+                {t.habits.limit(MAX_HABITS)}
+              </Text>
+            )}
           </Animated.View>
         )}
 
@@ -163,24 +210,20 @@ export default function OnboardingScreen() {
             <Text style={styles.lead} maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
               {t.onboarding.datesText}
             </Text>
-            {selected.map((id) => {
-              const draft = drafts[id];
+            {chosen.map((habit) => {
+              const draft = draftOf(habit.id);
               return (
-                <View key={id} style={styles.dateCard}>
+                <View key={habit.id} style={styles.dateCard}>
                   <View style={styles.dateCardHeader}>
-                    <View style={[styles.swatch, { backgroundColor: habitColor[id] }]} />
+                    <View style={[styles.swatch, { backgroundColor: habit.color }]} />
                     <Text style={styles.dateCardTitle} maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
-                      {t.habitWithout[id]}
+                      {habitLabel(habit)}
                     </Text>
                   </View>
-                  <FieldRow
-                    label={t.onboarding.quitDate}
-                    value={formatFullDate(draft.date)}
-                    onPress={() => pickDate(id)}
-                  />
+                  <FieldRow label={t.onboarding.quitDate} value={formatFullDate(draft.date)} onPress={() => pickDate(habit.id)} />
                   {draft.minutes == null ? (
                     <Pressable
-                      onPress={() => pickTime(id)}
+                      onPress={() => pickTime(habit.id)}
                       accessibilityRole="button"
                       style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}
                     >
@@ -190,9 +233,9 @@ export default function OnboardingScreen() {
                     </Pressable>
                   ) : (
                     <>
-                      <FieldRow label={t.onboarding.quitTime} value={formatTime(draft.minutes)} onPress={() => pickTime(id)} />
+                      <FieldRow label={t.onboarding.quitTime} value={formatTime(draft.minutes)} onPress={() => pickTime(habit.id)} />
                       <Pressable
-                        onPress={() => updateDraft(id, { minutes: null })}
+                        onPress={() => updateDraft(habit.id, { minutes: null })}
                         accessibilityRole="button"
                         style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}
                       >
@@ -213,7 +256,7 @@ export default function OnboardingScreen() {
         {step === 0 && <PillButton label={t.onboarding.start} onPress={() => setStep(1)} />}
         {step === 1 && (
           <>
-            <PillButton label={t.onboarding.next} onPress={() => setStep(2)} disabled={selected.length === 0} />
+            <PillButton label={t.onboarding.next} onPress={() => setStep(2)} disabled={chosen.length === 0} />
             <PillButton label={t.onboarding.back} variant="text" onPress={() => setStep(0)} />
           </>
         )}
@@ -224,7 +267,56 @@ export default function OnboardingScreen() {
           </>
         )}
       </View>
+
+      <HabitFormSheet
+        visible={form.visible}
+        initial={form.editing}
+        onClose={() => setForm((f) => ({ ...f, visible: false }))}
+        onSubmit={submitCustom}
+        onDelete={form.editing ? removeCustom : undefined}
+      />
     </View>
+  );
+}
+
+function HabitCard({
+  habit,
+  on,
+  subtitle,
+  onPress,
+  accessibilityRole,
+  accessibilityHint,
+}: {
+  habit: Habit;
+  on: boolean;
+  subtitle: string;
+  onPress: () => void;
+  accessibilityRole: 'switch' | 'button';
+  accessibilityHint?: string;
+}) {
+  const color = habit.color;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole={accessibilityRole}
+      accessibilityState={accessibilityRole === 'switch' ? { checked: on } : undefined}
+      accessibilityLabel={`${habitName(habit)}. ${subtitle}`}
+      accessibilityHint={accessibilityHint}
+      style={[styles.habitCard, on ? { backgroundColor: color, borderColor: color } : styles.habitCardIdle]}
+    >
+      <View style={[styles.habitIcon, { backgroundColor: on ? 'rgba(255,255,255,0.18)' : colors.subtle }]}>
+        <HabitIcon habit={habit} color={on ? colors.onAccent : colors.textPrimary} />
+      </View>
+      <View style={styles.habitText}>
+        <Text style={[styles.habitTitle, on && styles.onAccent]} maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
+          {habitName(habit)}
+        </Text>
+        <Text style={[styles.habitSub, on && styles.onAccent]} maxFontSizeMultiplier={MAX_FONT_SCALE_TEXT}>
+          {subtitle}
+        </Text>
+      </View>
+      <View style={[styles.check, on ? styles.checkOn : styles.checkOff]}>{on && <CheckIcon size={16} color={color} />}</View>
+    </Pressable>
   );
 }
 
@@ -246,7 +338,7 @@ function FieldRow({ label, value, onPress }: { label: string; value: string; onP
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createStyles({
   root: { flex: 1, backgroundColor: colors.background },
   progress: { flexDirection: 'row', justifyContent: 'center', gap: 6, paddingBottom: 8 },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.border },
@@ -256,6 +348,7 @@ const styles = StyleSheet.create({
   stepBody: { gap: 16 },
   hero: { flexDirection: 'row', gap: 12, marginTop: 24, marginBottom: 12 },
   heroTile: { width: 88, height: 88, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  heroTilePlus: { backgroundColor: colors.surface, borderWidth: 2, borderColor: colors.border, borderStyle: 'dashed' },
   title: { fontFamily: fonts.display800, fontSize: 30, lineHeight: 36, color: colors.textPrimary },
   lead: { fontFamily: fonts.text400, fontSize: 17, lineHeight: 24, color: colors.textSecondary },
   points: { gap: 12, marginTop: 8 },
@@ -273,6 +366,18 @@ const styles = StyleSheet.create({
   check: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   checkOn: { backgroundColor: colors.onAccent },
   checkOff: { borderWidth: 2, borderColor: colors.border },
+  addCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    borderRadius: radii.card,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    padding: 18,
+  },
+  addText: { flex: 1, fontFamily: fonts.text600, fontSize: 16, color: colors.textPrimary },
+  limit: { fontFamily: fonts.text400, fontSize: 14, color: colors.textSecondary },
 
   dateCard: { backgroundColor: colors.surface, borderRadius: radii.card, padding: 18, gap: 10 },
   dateCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
